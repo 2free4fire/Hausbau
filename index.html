@@ -176,10 +176,10 @@ tape-measure></a-entity>
 (function(){
 window.HOUSE={walls:[],walkables:[],ready:false};
 const H=window.HOUSE;
-const WALL='#eef0f2',GLASS='#bfe3f2',INT=0.12,EXT=0.44;
+const WALL='#b4b8bd',GLASS='#bfe3f2',ANTH='#34383d',INT=0.12,EXT=0.44;
 const EG={base:0.0,hExt:2.90,hInt:2.75};
 const OG={base:2.90,hExt:2.50,hInt:2.50};
-const VOID={x1:6.40,z1:4.30,x2:8.55,z2:6.60};
+const VOID={x1:6.40,z1:4.10,x2:8.55,z2:6.70};
 
 function box(p,x,y,z,w,h,d,color,opts){
 opts=opts||{};const e=document.createElement('a-box');
@@ -208,9 +208,13 @@ if(L<=0.001||H2<=0.001)return;let x,z,w,d;
 if(horiz){x=x1+dX*c0;z=cz;w=L;d=thick;}else{z=z1+dZ*c0;x=cx;d=L;w=thick;}
 box(p,x,yC,z,w,H2,d,color,{cls:'measurable'});
 if(collide)H.walls.push({minX:x-w/2,maxX:x+w/2,minZ:z-d/2,maxZ:z+d/2,yBase:yC-H2/2,yTop:yC+H2/2});}
-function glass(c0,L,yC,H2){
-if(horiz)box(p,x1+dX*c0,yC,cz,L,H2,0.05,GLASS,{opacity:0.28,roughness:0});
-else box(p,cx,yC,z1+dZ*c0,0.05,H2,L,GLASS,{opacity:0.28,roughness:0});}
+function glass(c0,L,yC,H2){var fr=0.06,t=0.09;
+if(horiz){var xC=x1+dX*c0;box(p,xC,yC,cz,L,H2,0.04,GLASS,{opacity:0.30,roughness:0});
+box(p,xC,yC+H2/2,cz,L+fr,fr,t,ANTH);box(p,xC,yC-H2/2,cz,L+fr,fr,t,ANTH);
+box(p,xC-L/2,yC,cz,fr,H2,t,ANTH);box(p,xC+L/2,yC,cz,fr,H2,t,ANTH);}
+else{var zC=z1+dZ*c0;box(p,cx,yC,zC,0.04,H2,L,GLASS,{opacity:0.30,roughness:0});
+box(p,cx,yC+H2/2,zC,t,fr,L+fr,ANTH);box(p,cx,yC-H2/2,zC,t,fr,L+fr,ANTH);
+box(p,cx,yC,zC-L/2,t,H2,fr,ANTH);box(p,cx,yC,zC+L/2,t,H2,fr,ANTH);}}
 let cur=0;const solids=[];
 for(const o of openings){if(o.start>cur)solids.push([cur,o.start]);cur=o.start+o.width;}
 if(cur<length)solids.push([cur,length]);
@@ -242,20 +246,24 @@ hinge.setAttribute('rotation','0 '+THREE.MathUtils.radToDeg(yaw)+' 0');hinge.set
 const leaf=document.createElement('a-box');
 leaf.setAttribute('class','door-leaf measurable');
 leaf.setAttribute('width',width);leaf.setAttribute('height',2.01);leaf.setAttribute('depth',0.045);
-leaf.setAttribute('color','#9a6a44');leaf.setAttribute('position',(width/2)+' 1.005 0');hinge.appendChild(leaf);
+leaf.setAttribute('color',ANTH);leaf.setAttribute('position',(width/2)+' 1.005 0');hinge.appendChild(leaf);
 const h2=document.createElement('a-sphere');
-h2.setAttribute('radius',0.045);h2.setAttribute('color','#e6c259');h2.setAttribute('position',(width-0.08)+' 1.05 0.06');hinge.appendChild(h2);
+h2.setAttribute('radius',0.045);h2.setAttribute('color','#c8ccd0');h2.setAttribute('position',(width-0.08)+' 1.05 0.06');hinge.appendChild(h2);
 hinge.setAttribute('grabbable-door','swing:'+swing);p.appendChild(hinge);}
 
 /* Schiebetür (Lofttür): Öffnung x1..x1+width an Wand z */
 function loft(p,x1,z,width,base){
 const leaf=document.createElement('a-box');
 leaf.setAttribute('class','slide-leaf measurable');
-leaf.setAttribute('width',width-0.05);leaf.setAttribute('height',2.05);leaf.setAttribute('depth',0.06);
-leaf.setAttribute('color','#7d5436');
+leaf.setAttribute('width',width-0.12);leaf.setAttribute('height',1.95);leaf.setAttribute('depth',0.04);
+leaf.setAttribute('color',GLASS);leaf.setAttribute('opacity',0.32);leaf.setAttribute('transparent','true');
 leaf.setAttribute('position',(x1+width/2)+' '+(base+1.025)+' '+z);
-leaf.setAttribute('sliding-door','open:'+(width-0.1)+'; sign:-1');p.appendChild(leaf);
-box(p,(x1+width/2),base+2.18,z,width+0.2,0.12,0.10,'#6f4a30');}
+leaf.setAttribute('sliding-door','open:'+(width-0.1)+'; sign:-1');
+var W=width-0.05,Hh=2.05,fr=0.06,t=0.07;
+box(leaf,0,Hh/2,0,W,fr,t,ANTH);box(leaf,0,-Hh/2,0,W,fr,t,ANTH);
+box(leaf,-W/2,0,0,fr,Hh,t,ANTH);box(leaf,W/2,0,0,fr,Hh,t,ANTH);
+p.appendChild(leaf);
+box(p,(x1+width/2),base+2.18,z,width+0.2,0.12,0.10,ANTH);}
 
 /* Referenzfigur ~1,75 m */
 function human(p,x,z,base){
@@ -291,20 +299,22 @@ H.walkables.push(gr);}
 
 /* U-Treppe ab Diele + Lager darunter */
 function uStairs(p){
-const rise=0.18125,tread=0.275,wF=0.92;
-for(let i=0;i<8;i++){const top=(i+1)*rise,z=4.30+(i+0.5)*tread;
-const b=box(p,6.97,top-0.09,z,wF,0.18,tread,'#8a5a3b');H.walkables.push(b);}
-const land=box(p,7.46,1.36,6.45,1.92,0.18,0.55,'#8a5a3b');H.walkables.push(land);
-for(let j=0;j<8;j++){const top=1.45+(j+1)*rise,z=6.30-(j+0.5)*tread;
-const b=box(p,7.97,top-0.09,z,wF,0.18,tread,'#8a5a3b');H.walkables.push(b);}
-box(p,6.49,1.5,5.45,0.06,3.0,2.3,'#6f4630',{opacity:0.5,roughness:1});
-label(p,7.0,5.3,'TREPPE\n(2x über Eck)',0.02);
+const rise=0.18125,go=0.225,wF=0.9;
+// Lauf 1: aufsteigend nach Osten (+X), Nordseite (z~4,55) – Einstieg aus der Diele (links)
+for(let i=0;i<8;i++){const top=(i+1)*rise,x=6.55+(i+0.5)*go;
+const b=box(p,x,top-0.09,4.55,go,0.18,wF,'#8a5a3b');H.walkables.push(b);}
+// Podest Ost
+const land=box(p,8.25,1.36,5.38,0.5,0.18,2.55,'#8a5a3b');H.walkables.push(land);
+// Lauf 2: aufsteigend nach Westen (-X), Südseite (z~6,20)
+for(let j=0;j<8;j++){const top=1.45+(j+1)*rise,x=8.35-(j+0.5)*go;
+const b=box(p,x,top-0.09,6.20,go,0.18,wF,'#8a5a3b');H.walkables.push(b);}
+label(p,7.4,4.55,'TREPPE',0.02);
 }
 function lager(p){
-wall(p,7.45,4.30,7.45,6.10,0,1.30,INT,WALL,[{start:0.5,width:0.8,sill:0,head:1.25}]);
-wall(p,8.45,4.30,8.45,6.10,0,1.30,INT,WALL,[]);
-wall(p,7.45,6.10,8.45,6.10,0,1.30,INT,WALL,[]);
-label(p,7.95,5.2,'LAGER',0.02);}
+// Raum unter Lauf 2 – beidseitig (Nord- und Südwand) umschlossen
+wall(p,6.55,5.75,8.35,5.75,0,1.30,INT,WALL,[]);
+wall(p,6.55,6.65,8.35,6.65,0,1.30,INT,WALL,[]);
+label(p,7.45,6.2,'LAGER',0.02);}
 
 function build(){
 const p=document.getElementById('building');
@@ -409,6 +419,8 @@ wall(p,10.0,8.50,16.4,8.50,0,2.45,0.30,WALL,[{start:5.0,width:0.9,sill:0,head:2.
 wall(p,13.35,0.15,13.35,5.95,0,2.45,0.30,WALL,[]);
 wall(p,10.0,5.95,16.4,5.95,0,2.45,0.30,WALL,[{start:1.4,width:0.9,sill:0,head:2.05},{start:4.1,width:0.9,sill:0,head:2.05}]);
 wall(p,13.35,5.95,13.35,8.65,0,2.45,0.30,WALL,[]);
+box(p,11.85,1.05,0.20,2.5,2.10,0.08,ANTH);
+box(p,14.75,1.05,0.20,2.5,2.10,0.08,ANTH);
 tile(p,10.0,0.15,13.35,5.95,0,'#e2e2dd','GARAGE 1\n16,27 m²');
 tile(p,13.35,0.15,16.4,5.95,0,'#e2e2dd','GARAGE 2\n16,27 m²');
 tile(p,10.0,5.95,13.35,8.50,0,'#e2e2dd','MÜLL/RÄDER');
