@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>EFH Halle – VR-Grundriss (Meta Quest 3)</title>
+
+  <!-- A-Frame 1.5.0: bringt WebXR + Quest-Controller (oculus-touch-controls, thumbstickmoved) von Haus aus mit -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <style>
+    /* Kleines Info-Overlay nur für den Desktop-Test (im VR-Modus ausgeblendet) */
+    #hud {
+      position: fixed; left: 12px; bottom: 12px; z-index: 9999;
+      font-family: system-ui, sans-serif; font-size: 13px; line-height: 1.4;
+      background: rgba(20,22,26,.78); color: #fff; padding: 10px 14px;
+      border-radius: 10px; max-width: 320px; pointer-events: none;
+    }
+    #hud b { color: #ffd479; }
+    .a-enter-vr-button { background-color: #2e7d5b !important; }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       BEDIENUNG
+       - VR (Quest 3): "Enter VR" tippen.
+           Linker Thumbstick = freies Laufen (in Blickrichtung)
+           Rechter Thumbstick links/rechts = Snap-Turn (30°)
+       - Desktop-Test: WASD + Maus (zum Vorab-Prüfen ohne Brille)
+       Hinweis: WebXR braucht HTTPS oder localhost (siehe Begleittext).
+       ============================================================ -->
+  <div id="hud">
+    <b>VR (Quest 3):</b> linker Stick = laufen, rechter Stick = drehen.<br>
+    <b>Desktop:</b> WASD + Maus.
+  </div>
+
+  <!-- ============================================================
+       CUSTOM-KOMPONENTE: Locomotion für Quest-Controller
+       Linker Stick bewegt das Rig in Kopf-Blickrichtung,
+       rechter Stick macht Snap-Turns. Keine Wand-Kollision
+       (man kann durch Wände gehen) – so verfängt man sich nie
+       und kann Räume frei inspizieren.
+       ============================================================ -->
+  <script>
+    AFRAME.registerComponent('vr-locomotion', {
+      schema: {
+        speed:    { default: 2.5 },  // Laufgeschwindigkeit in m/s
+        rotation: { default: 30 },   // Snap-Turn-Winkel in Grad
+        deadzone: { default: 0.15 }
+      },
+      init: function () {
+        this.velX = 0; this.velZ = 0; this.snapReady = true;
+        this.dir   = new THREE.Vector3();
+        this.right = new THREE.Vector3();
+        this.up    = new THREE.Vector3(0, 1, 0);
+        this.move  = new THREE.Vector3();
+
+        this.onStick = (e) => {
+          const id = e.target.id;
+          let x = e.detail.x, y = e.detail.y;
+          if (Math.abs(x) < this.data.deadzone) x = 0;
+          if (Math.abs(y) < this.data.deadzone) y = 0;
+
+          if (id === 'leftHand') {            // linker Stick = bewegen
+            this.velX = x; this.velZ = y;
+          } else if (id === 'rightHand') {    // rechter Stick = drehen
+            if (x > 0.7 && this.snapReady)      { this.snapTurn(-this.data.rotation); this.snapReady = false; }
+            else if (x < -0.7 && this.snapReady){ this.snapTurn( this.data.rotation); this.snapReady = false; }
+            else if (Math.abs(x) < 0.3)         { this.snapReady = true; }
+          }
+        };
+        this.el.sceneEl.addEventListener('thumbstickmoved', this.onStick);
+      },
+      snapTurn: function (deg) {
+        this.el.object3D.rotation.y += THREE.MathUtils.degToRad(deg);
+      },
+      tick: function (t, dt) {
+        if (!dt || (this.velX === 0 && this.velZ === 0)) return;
+        const cam = this.el.sceneEl.camera;
+        if (!cam) return;
+        cam.getWorldDirection(this.dir);   // Blickrichtung (Welt)
+        this.dir.y = 0;
+        if (this.dir.lengthSq() < 1e-6) return;
+        this.dir.normalize();
+        this.right.crossVectors(this.dir, this.up).normalize();
+
+        this.move.set(0, 0, 0);
+        this.move.addScaledVector(this.dir,  -this.velZ); // Stick nach vorn = vorwärts
+        this.move.addScaledVector(this.right, this.velX); // seitwärts
+        if (this.move.lengthSq() > 1e-6) {
+          this.move.normalize().multiplyScalar(this.data.speed * dt / 1000);
+          this.el.object3D.position.add(this.move);
+        }
+      },
+      remove: function () {
+        this.el.sceneEl.removeEventListener('thumbstickmoved', this.onStick);
+      }
+    });
+  </script>
+
+  <a-scene
+      renderer="colorManagement: true; antialias: true"
+      background="color: #aee0f5"
+      vr-mode-ui="enabled: true">
+
+    <!-- ===================== LICHT ===================== -->
+    <!-- Starkes Ambient, damit auch geschlossene Räume unter der Decke hell bleiben -->
+    <a-entity light="type: ambient; color: #ffffff; intensity: 0.95"></a-entity>
+    <a-entity light="type: hemisphere; color: #ffffff; groundColor: #cfc7b8; intensity: 0.55"></a-entity>
+    <a-entity light="type: directional; intensity: 0.45" position="8 14 -6"></a-entity>
+
+    <!-- ===================== HIMMEL ===================== -->
+    <a-sky color="#aee0f5"></a-sky>
+
+    <!-- ===================== GRUNDSTÜCK / RASEN =====================
+         Große grüne Fläche, das Haus steht frei darauf, man kann
+         komplett herumlaufen. Mittelpunkt grob in der Hausmitte. -->
+    <a-plane position="8 0 5.5" rotation="-90 0 0" width="80" height="80"
+             color="#5f9d4f" roughness="1"></a-plane>
+    <!-- Zufahrt / Pflaster vor den Garagen (Nordseite) -->
+    <a-plane position="13 0.005 -4" rotation="-90 0 0" width="8" height="9"
+             color="#9a9a96" roughness="1"></a-plane>
+
+    <!-- ===================== KAMERA-RIG (Spawn im Eingang) =====================
+         Start in der Diele/Eingang, Augenhöhe 1,72 m, Blick ins Haus (+Z).
+         wasd-controls = Desktop-Test, look-controls = Maus/HMD. -->
+    <a-entity id="rig" position="4.7 0 1.6" rotation="0 180 0"
+              vr-locomotion="speed: 2.5; rotation: 30"
+              wasd-controls="acceleration: 30">
+      <a-entity id="camera" camera position="0 1.72 0" look-controls="pointerLockEnabled: false"></a-entity>
+      <a-entity id="leftHand"  oculus-touch-controls="hand: left"></a-entity>
+      <a-entity id="rightHand" oculus-touch-controls="hand: right"></a-entity>
+    </a-entity>
+
+    <!-- Container, in den das Gebäude per Script generiert wird -->
+    <a-entity id="building"></a-entity>
+
+  </a-scene>
+
+  <!-- ============================================================
+       GEBÄUDE-GENERATOR
+       Koordinatensystem (in Metern, 1:1):
+         X = nach rechts (West 0  ->  Ost),  Z = in die Tiefe (Nord 0 -> Süd 11)
+       Haupthaus-Footprint: X 0..10, Z 0..11  (aus den Außenmaßen abgeleitet)
+       Garagenblock:        X 10..16, Z 0..8.5 (östlich angebaut)
+       EG: Basis 0.00, lichte Höhe 2.75 m
+       OG: Basis +2.90 (laut Plan "+2,90"), lichte Höhe 2.50 m
+       ============================================================ -->
+  <script>
+  (function () {
+    // ---------- Globale Maße / Farben ----------
+    const EXT = 0.36;          // Außenwandstärke (m)
+    const INT = 0.15;          // Innenwandstärke (m)
+    const WALL = '#eef0f2';    // Wandfarbe hell (neutral/weiß-grau)
+    const GLASS = '#bfe3f2';   // Fensterglas
+    const WOOD_EG = '#a07b52'; // Bodenoptik EG (Holz)
+    const WOOD_OG = '#b08b5e'; // Bodenoptik OG (Holz)
+    const TILE = '#c9cdd2';    // Decke / Rohdecke (von unten)
+    const CONCRETE = '#8d9094';// Garagenboden
+    const ROOF = '#d9dadb';
+
+    const EG = { base: 0.00, h: 2.75 };
+    const OG = { base: 2.90, h: 2.50 };
+
+    function el(tag, attrs) {
+      const e = document.createElement(tag);
+      for (const k in attrs) e.setAttribute(k, attrs[k]);
+      return e;
+    }
+    function box(parent, x, y, z, w, h, d, color, opts) {
+      opts = opts || {};
+      const e = el('a-box', { position: x + ' ' + y + ' ' + z, width: w, height: h, depth: d, color: color });
+      e.setAttribute('shadow', 'cast: false; receive: false');
+      if (opts.opacity != null) { e.setAttribute('opacity', opts.opacity); e.setAttribute('transparent', 'true'); }
+      if (opts.roughness != null) e.setAttribute('roughness', opts.roughness);
+      parent.appendChild(e);
+      return e;
+    }
+
+    /* ---------- Wand mit Öffnungen ----------
+       Achsparallele Wand von (x1,z1) nach (x2,z2).
+       openings: [{ start, width, sill, head, glass }]
+         start = Abstand vom Startpunkt (m), width = Öffnungsbreite
+         sill  = Brüstungshöhe (Fenster z.B. 0.85, Tür 0)
+         head  = Oberkante Öffnung (z.B. 2.10), glass = true für Glasscheibe
+    */
+    function wall(parent, x1, z1, x2, z2, base, height, thick, color, openings) {
+      openings = (openings || []).slice().sort((a, b) => a.start - b.start);
+      const horizontal = Math.abs(z2 - z1) < 1e-6; // Wand verläuft in X
+      const length = Math.hypot(x2 - x1, z2 - z1);
+      const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
+      const dirX = Math.sign(x2 - x1) || 1;
+      const dirZ = Math.sign(z2 - z1) || 1;
+
+      // Hilfsfunktion: ein Teilstück entlang der Wand setzen
+      function place(centerAlong, segLen, yCenter, segH) {
+        if (segLen <= 0.001 || segH <= 0.001) return;
+        if (horizontal) {
+          box(parent, x1 + dirX * centerAlong, yCenter, cz, segLen, segH, thick, color);
+        } else {
+          box(parent, cx, yCenter, z1 + dirZ * centerAlong, thick, segH, segLen, color);
+        }
+      }
+      function glassPane(centerAlong, segLen, yCenter, segH) {
+        if (horizontal) {
+          box(parent, x1 + dirX * centerAlong, yCenter, cz, segLen, segH, 0.05, GLASS, { opacity: 0.28, roughness: 0 });
+        } else {
+          box(parent, cx, yCenter, z1 + dirZ * centerAlong, 0.05, segH, segLen, GLASS, { opacity: 0.28, roughness: 0 });
+        }
+      }
+
+      // Volle Wandstücke zwischen den Öffnungen
+      let cursor = 0;
+      const segs = [];
+      for (const o of openings) {
+        if (o.start > cursor) segs.push([cursor, o.start]);
+        cursor = o.start + o.width;
+      }
+      if (cursor < length) segs.push([cursor, length]);
+      for (const s of segs) {
+        const segLen = s[1] - s[0];
+        place((s[0] + s[1]) / 2, segLen, base + height / 2, height);
+      }
+
+      // Brüstung (unter Fenster) + Sturz (über Öffnung) + optional Glas
+      for (const o of openings) {
+        const c = o.start + o.width / 2;
+        const sill = o.sill || 0;
+        const head = (o.head != null) ? o.head : 2.10;
+        if (sill > 0.001) place(c, o.width, base + sill / 2, sill);                 // Brüstung
+        if (head < height - 0.001) place(c, o.width, base + head + (height - head) / 2, height - head); // Sturz
+        if (o.glass) glassPane(c, o.width, base + sill + (head - sill) / 2, head - sill);
+      }
+    }
+
+    /* ---------- Bodenplatte / Decke mit rechteckigem Loch (für Treppenauge) ---------- */
+    function slabWithHole(parent, x1, z1, x2, z2, yTop, thick, color, hx1, hz1, hx2, hz2) {
+      const yc = yTop - thick / 2;
+      // Nord-Streifen (z1..hz1)
+      if (hz1 > z1) box(parent, (x1 + x2) / 2, yc, (z1 + hz1) / 2, x2 - x1, thick, hz1 - z1, color);
+      // Süd-Streifen (hz2..z2)
+      if (z2 > hz2) box(parent, (x1 + x2) / 2, yc, (hz2 + z2) / 2, x2 - x1, thick, z2 - hz2, color);
+      // West-Streifen
+      if (hx1 > x1) box(parent, (x1 + hx1) / 2, yc, (hz1 + hz2) / 2, hx1 - x1, thick, hz2 - hz1, color);
+      // Ost-Streifen
+      if (x2 > hx2) box(parent, (hx2 + x2) / 2, yc, (hz1 + hz2) / 2, x2 - hx2, thick, hz2 - hz1, color);
+    }
+
+    /* ---------- Raumbeschriftung (liegt lesbar auf dem Boden) ---------- */
+    function label(parent, x, z, text, base) {
+      const e = el('a-text', {
+        value: text, align: 'center', color: '#23262b', width: '3.4',
+        position: x + ' ' + (base + 0.03) + ' ' + z, rotation: '-90 0 0'
+      });
+      parent.appendChild(e);
+    }
+
+    /* ---------- Gerade Treppe EG -> OG (als kompakte Stufenfolge) ---------- */
+    function stairs(parent, xL, xR, zBottom, zTop, totalRise, steps) {
+      const w = xR - xL;
+      const rise = totalRise / steps;
+      const run  = (zBottom - zTop) / steps; // läuft in -Z nach oben
+      for (let i = 0; i < steps; i++) {
+        const h = (i + 1) * rise;
+        box(parent, (xL + xR) / 2, h / 2, zBottom - i * run - run / 2, w, h, run, '#8a6a45');
+      }
+    }
+
+    // ===========================================================
+    function build() {
+      const root = document.getElementById('building');
+
+      // ============================================================
+      //  BÖDEN / DECKEN / DACH
+      // ============================================================
+      const STAIR = { x1: 4.8, z1: 3.0, x2: 6.6, z2: 5.4 }; // Treppenauge
+
+      box(root, 5, 0.0, 5.5, 10, 0.04, 11, WOOD_EG);                 // EG-Boden Haupthaus (Holz)
+      box(root, 13, 0.0, 4.25, 6, 0.04, 8.5, CONCRETE);             // Garagenboden (Beton)
+
+      // Rohdecke EG / OG-Boden (mit Treppenloch)
+      slabWithHole(root, 0, 0, 10, 11, 2.90, 0.15, TILE, STAIR.x1, STAIR.z1, STAIR.x2, STAIR.z2);
+      slabWithHole(root, 0, 0, 10, 11, 2.99, 0.04, WOOD_OG, STAIR.x1, STAIR.z1, STAIR.x2, STAIR.z2); // OG-Boden Holz
+
+      box(root, 5, 5.40, 5.5, 10, 0.20, 11, ROOF);                  // Flachdach Haupthaus
+      box(root, 13, 2.75, 4.25, 6, 0.20, 8.5, ROOF);               // Flachdach Garage
+
+      stairs(root, 5.0, 6.2, 5.4, 2.4, 2.90, 14);                   // Treppe ins OG
+
+      // ============================================================
+      //  ERDGESCHOSS – AUSSENWÄNDE (Footprint 0..10 / 0..11)
+      // ============================================================
+      // Nordwand (z=0): Eingangstür + Fenster HAR + Fenster Büro
+      wall(root, 0, 0, 10, 0, EG.base, EG.h, EXT, WALL, [
+        { start: 0.6, width: 0.9, sill: 0.85, head: 2.10, glass: true }, // Fenster HAR
+        { start: 4.2, width: 1.1, sill: 0.0,  head: 2.10 },              // HAUSTÜR
+        { start: 7.3, width: 1.6, sill: 0.85, head: 2.10, glass: true }  // Fenster Büro
+      ]);
+      // Südwand (z=11): große Terrassen-/Gartentüren (bodentief)
+      wall(root, 0, 11, 10, 11, EG.base, EG.h, EXT, WALL, [
+        { start: 1.0, width: 2.4, sill: 0.0, head: 2.30, glass: true }, // Terrassentür Wohnen
+        { start: 5.0, width: 2.4, sill: 0.0, head: 2.30, glass: true }  // Terrassentür Essen
+      ]);
+      // Westwand (x=0): Küchenfenster + Wohnzimmerfenster
+      wall(root, 0, 0, 0, 11, EG.base, EG.h, EXT, WALL, [
+        { start: 3.5, width: 1.4, sill: 0.85, head: 2.10, glass: true },
+        { start: 8.0, width: 1.6, sill: 0.85, head: 2.10, glass: true }
+      ]);
+      // Ostwand (x=10): Bürofenster + Tür zur Garage + Wohnzimmerfenster
+      wall(root, 10, 0, 10, 11, EG.base, EG.h, EXT, WALL, [
+        { start: 1.0, width: 1.4, sill: 0.85, head: 2.10, glass: true }, // Büro
+        { start: 4.0, width: 0.9, sill: 0.0,  head: 2.05 },              // Innentür Haus<->Garage
+        { start: 9.0, width: 1.4, sill: 0.85, head: 2.10, glass: true }  // Wohnen
+      ]);
+
+      // ============================================================
+      //  ERDGESCHOSS – INNENWÄNDE (repräsentativ, offene Wohn-/Essbereiche)
+      // ============================================================
+      // HAR | WC-Bereich
+      wall(root, 2.2, 0, 2.2, 2.9, EG.base, EG.h, INT, WALL, [{ start: 2.0, width: 0.85, sill: 0, head: 2.05 }]);
+      // WC/Garderobe | Diele
+      wall(root, 3.7, 0, 3.7, 2.9, EG.base, EG.h, INT, WALL, [{ start: 2.0, width: 0.85, sill: 0, head: 2.05 }]);
+      // Obere Nebenraum-Zeile | Küche
+      wall(root, 0, 2.9, 3.7, 2.9, EG.base, EG.h, INT, WALL, [{ start: 1.5, width: 0.85, sill: 0, head: 2.05 }]);
+      // Küchen-Trennwand (Teilwand, danach offen zum Wohnraum)
+      wall(root, 3.6, 2.9, 3.6, 4.4, EG.base, EG.h, INT, WALL, []);
+      // Diele/West | Büro+Ostzone (oben geschlossen, unten offen zum Wohnen)
+      wall(root, 6.6, 0, 6.6, 5.2, EG.base, EG.h, INT, WALL, [{ start: 1.4, width: 0.9, sill: 0, head: 2.05 }]);
+      // Büro Südwand
+      wall(root, 6.6, 3.0, 10, 3.0, EG.base, EG.h, INT, WALL, [{ start: 0.4, width: 0.9, sill: 0, head: 2.05 }]);
+
+      // EG-Raumbeschriftungen
+      label(root, 1.1, 1.45, 'HAR / TECHNIK\n6,3 m²', EG.base);
+      label(root, 2.95, 1.2, 'DU/WC\n3,5 m²', EG.base);
+      label(root, 5.1, 1.0, 'GARDEROBE', EG.base);
+      label(root, 8.3, 1.5, 'BÜRO / GAST\n10,6 m²', EG.base);
+      label(root, 5.1, 4.0, 'DIELE\n11,7 m²', EG.base);
+      label(root, 1.8, 4.4, 'KÜCHE\n10,8 m²', EG.base);
+      label(root, 4.6, 8.4, 'WOHNEN / ESSEN\n36,2 m²', EG.base);
+
+      // ============================================================
+      //  OBERGESCHOSS – AUSSENWÄNDE (gleicher Footprint, +2,90)
+      //  Fenster mit Brüstung 0,85 (Plan: "BRH 85")
+      // ============================================================
+      wall(root, 0, 0, 10, 0, OG.base, OG.h, EXT, WALL, [
+        { start: 1.0, width: 1.4, sill: 0.85, head: 2.25, glass: true }, // Kind 3
+        { start: 7.4, width: 1.6, sill: 0.85, head: 2.25, glass: true }  // Schlafen
+      ]);
+      wall(root, 0, 11, 10, 11, OG.base, OG.h, EXT, WALL, [
+        { start: 1.0, width: 1.4, sill: 0.85, head: 2.25, glass: true }, // Kind 2
+        { start: 7.4, width: 1.6, sill: 0.85, head: 2.25, glass: true }
+      ]);
+      wall(root, 0, 0, 0, 11, OG.base, OG.h, EXT, WALL, [
+        { start: 1.0, width: 1.2, sill: 0.85, head: 2.25, glass: true }, // Kind 3
+        { start: 4.8, width: 0.9, sill: 1.20, head: 2.25, glass: true }, // Bad (höhere Brüstung)
+        { start: 8.6, width: 1.4, sill: 0.85, head: 2.25, glass: true }  // Kind 2
+      ]);
+      wall(root, 10, 0, 10, 11, OG.base, OG.h, EXT, WALL, [
+        { start: 1.0, width: 1.4, sill: 0.85, head: 2.25, glass: true }, // Schlafen
+        { start: 4.8, width: 1.4, sill: 0.85, head: 2.25, glass: true }  // Kind 1
+      ]);
+
+      // ============================================================
+      //  OBERGESCHOSS – INNENWÄNDE
+      // ============================================================
+      // Linke Raumreihe | Flur
+      wall(root, 3.5, 0, 3.5, 11, OG.base, OG.h, INT, WALL, [
+        { start: 2.0, width: 0.85, sill: 0, head: 2.05 }, // Kind 3
+        { start: 5.0, width: 0.85, sill: 0, head: 2.05 }, // Bad
+        { start: 6.8, width: 0.75, sill: 0, head: 2.05 }, // Abstell
+        { start: 9.0, width: 0.85, sill: 0, head: 2.05 }  // Kind 2
+      ]);
+      // Flur | Rechte Raumreihe
+      wall(root, 6.5, 0, 6.5, 11, OG.base, OG.h, INT, WALL, [
+        { start: 1.0, width: 0.85, sill: 0, head: 2.05 }, // Schlafen
+        { start: 5.0, width: 0.85, sill: 0, head: 2.05 }  // Kind 1
+      ]);
+      // Quertrennungen links
+      wall(root, 0, 3.9, 3.5, 3.9, OG.base, OG.h, INT, WALL, []); // Kind3 | Bad
+      wall(root, 0, 6.2, 3.5, 6.2, OG.base, OG.h, INT, WALL, []); // Bad  | Abstell
+      wall(root, 0, 7.4, 3.5, 7.4, OG.base, OG.h, INT, WALL, []); // Abst | Kind2
+      // Ankleide | Flur (oben Mitte)
+      wall(root, 3.5, 2.0, 6.5, 2.0, OG.base, OG.h, INT, WALL, [{ start: 1.0, width: 0.85, sill: 0, head: 2.05 }]);
+      // Schlafen | Kind1 (rechts)
+      wall(root, 6.5, 3.0, 10, 3.0, OG.base, OG.h, INT, WALL, []);
+
+      // OG-Raumbeschriftungen
+      label(root, 1.7, 1.9, 'KIND 3\n12,9 m²', OG.base);
+      label(root, 1.7, 5.0, 'BAD\n10,4 m²', OG.base);
+      label(root, 1.7, 6.8, 'ABSTELL', OG.base);
+      label(root, 1.7, 9.2, 'KIND 2\n12,7 m²', OG.base);
+      label(root, 5.0, 1.0, 'ANKLEIDE\n6,7 m²', OG.base);
+      label(root, 5.0, 6.5, 'FLUR\n10,3 m²', OG.base);
+      label(root, 8.2, 1.5, 'SCHLAFEN\n10,1 m²', OG.base);
+      label(root, 8.2, 5.0, 'KIND 1\n12,9 m²', OG.base);
+
+      // ============================================================
+      //  GARAGENBLOCK (nur EG, östlich angebaut) X 10..16, Z 0..8.5
+      //  Höhe niedriger (Flachdach), Tore Richtung Norden/Zufahrt
+      // ============================================================
+      const GH = 2.55;
+      // Nordwand: zwei Garagentore
+      wall(root, 10, 0, 16, 0, EG.base, GH, EXT, WALL, [
+        { start: 0.4, width: 2.5, sill: 0, head: 2.20 }, // Garagentor 1
+        { start: 3.1, width: 2.5, sill: 0, head: 2.20 }  // Garagentor 2
+      ]);
+      // Südwand: kleine Tür Geräte
+      wall(root, 10, 8.5, 16, 8.5, EG.base, GH, EXT, WALL, [{ start: 5.0, width: 0.9, sill: 0, head: 2.05 }]);
+      // Ostwand: Seitentür Geräte
+      wall(root, 16, 0, 16, 8.5, EG.base, GH, EXT, WALL, [{ start: 7.4, width: 0.9, sill: 0, head: 2.05 }]);
+      // (Westwand = bereits vorhandene Ost-Außenwand des Hauses, x=10)
+      // Innen: F90-Trennwand zwischen den Garagen
+      wall(root, 13, 0, 13, 5.5, EG.base, GH, INT, WALL, []);
+      // Garagen | Müll/Geräte (Durchgänge)
+      wall(root, 10, 5.5, 16, 5.5, EG.base, GH, INT, WALL, [
+        { start: 1.4, width: 0.9, sill: 0, head: 2.05 },
+        { start: 4.1, width: 0.9, sill: 0, head: 2.05 }
+      ]);
+      // Müll | Geräte
+      wall(root, 13, 5.5, 13, 8.5, EG.base, GH, INT, WALL, []);
+
+      label(root, 11.5, 2.8, 'GARAGE 1\n16,3 m²', EG.base);
+      label(root, 14.5, 2.8, 'GARAGE 2\n16,3 m²', EG.base);
+      label(root, 11.5, 7.0, 'MÜLL /\nFAHRRÄDER', EG.base);
+      label(root, 14.5, 7.0, 'GERÄTE', EG.base);
+
+      // Kleine Terrassenplatte (Süden) zur Orientierung
+      box(root, 3.5, 0.02, 13.0, 5.0, 0.04, 4.0, '#b9b2a4'); // Terrasse 21 m²
+      label(root, 3.5, 13.0, 'TERRASSE\n21,0 m²', 0.0);
+    }
+
+    // Build starten, sobald die Szene bereit ist
+    window.addEventListener('load', function () {
+      const scene = document.querySelector('a-scene');
+      if (scene.hasLoaded) build();
+      else scene.addEventListener('loaded', build);
+    });
+  })();
+  </script>
+</body>
+</html>
