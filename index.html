@@ -313,17 +313,37 @@ for(let k=0;k<26;k++){g.strokeStyle='rgba('+(90+Math.random()*40|0)+','+(60+Math
 const y=Math.random()*S;g.beginPath();g.moveTo(i*pw,y);g.bezierCurveTo(i*pw+pw*0.3,y+7,i*pw+pw*0.6,y-7,i*pw+pw,y+Math.random()*10-5);g.stroke();}}}
 function drawTile(g,S){const n=4,tw=S/n;g.fillStyle='#8f969c';g.fillRect(0,0,S,S);
 for(let y=0;y<n;y++)for(let x=0;x<n;x++){const v=212+Math.random()*26|0;g.fillStyle='rgb('+v+','+v+','+(v-6)+')';g.fillRect(x*tw+3,y*tw+3,tw-6,tw-6);}}
+function drawConcrete(g,S){const n=3,tw=S/n,pad=2;
+g.fillStyle='#2f3236';g.fillRect(0,0,S,S);                       // Fugen (dunkel)
+for(let ty=0;ty<n;ty++)for(let tx=0;tx<n;tx++){
+ const x0=tx*tw,y0=ty*tw,b=72+Math.random()*10;
+ g.fillStyle='rgb('+(b|0)+','+((b+3)|0)+','+((b+7)|0)+')';
+ g.fillRect(x0+pad,y0+pad,tw-2*pad,tw-2*pad);                    // Fliesengrund
+ for(let k=0;k<46;k++){                                          // wolkige Betonstruktur
+  const cx=x0+pad+Math.random()*(tw-2*pad),cy=y0+pad+Math.random()*(tw-2*pad),r=12+Math.random()*46;
+  const sh=(Math.random()<0.5?-1:1)*(7+Math.random()*16),v=Math.max(48,Math.min(112,b+sh))|0;
+  const gr=g.createRadialGradient(cx,cy,0,cx,cy,r);
+  gr.addColorStop(0,'rgba('+v+','+(v+3)+','+(v+7)+',0.22)');gr.addColorStop(1,'rgba('+v+','+(v+3)+','+(v+7)+',0)');
+  g.fillStyle=gr;g.beginPath();g.arc(cx,cy,r,0,7);g.fill();}
+ for(let k=0;k<140;k++){                                         // feine Sprenkel
+  const sx=x0+pad+Math.random()*(tw-2*pad),sy=y0+pad+Math.random()*(tw-2*pad),d=Math.random()<0.5;
+  g.fillStyle='rgba('+(d?235:10)+','+(d?235:10)+','+(d?238:14)+','+(0.02+Math.random()*0.03)+')';
+  g.fillRect(sx,sy,1,1);}}}
 function setMap(el,t0,scale,rough){const m=el.getObject3D('mesh');if(!m){el.addEventListener('loaded',()=>setMap(el,t0,scale,rough));return;}
 const w=parseFloat(el.getAttribute('width'))||1,d=parseFloat(el.getAttribute('depth'))||1;
 const t=t0.clone();t.needsUpdate=true;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(Math.max(1,Math.round(w/scale)),Math.max(1,Math.round(d/scale)));
 m.material.map=t;m.material.color.set('#ffffff');m.material.roughness=rough;m.material.metalness=0;m.material.needsUpdate=true;}
+function setMapStair(el,t0,scale,rough){const m=el.getObject3D('mesh');if(!m){el.addEventListener('loaded',()=>setMapStair(el,t0,scale,rough));return;}
+const w=parseFloat(el.getAttribute('width'))||1,d=parseFloat(el.getAttribute('depth'))||1;
+const t=t0.clone();t.needsUpdate=true;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(Math.max(0.06,w/scale),Math.max(0.06,d/scale));
+m.material.map=t;m.material.color.set('#ffffff');m.material.roughness=rough;m.material.metalness=0;m.material.needsUpdate=true;}
 function tuneGlass(el){const m=el.getObject3D('mesh');if(!m){el.addEventListener('loaded',()=>tuneGlass(el));return;}
 m.material.roughness=0.05;m.material.metalness=0.0;m.material.transparent=true;m.material.opacity=0.16;m.material.color.set('#dfeef6');m.material.needsUpdate=true;}
 function applyRealism(){
-const WOOD=tex(drawWood),TILE=tex(drawTile);
+const WOOD=tex(drawWood),CONCRETE=tex(drawConcrete,600);
 const b=document.getElementById('building');
-b.querySelectorAll('.floor-wood').forEach(e=>setMap(e,WOOD,1.4,0.55));
-b.querySelectorAll('.floor-tile').forEach(e=>setMap(e,TILE,0.5,0.35));
+b.querySelectorAll('.floor-wood,.floor-tile').forEach(e=>setMap(e,CONCRETE,2.4,0.5));
+b.querySelectorAll('.steptile').forEach(e=>setMapStair(e,CONCRETE,2.4,0.5));
 b.querySelectorAll('.wood').forEach(e=>setMap(e,WOOD,0.6,0.5));
 b.querySelectorAll('.glassmat').forEach(e=>tuneGlass(e));
 const sky=document.querySelector('a-sky');
@@ -334,18 +354,29 @@ if(sky.getObject3D('mesh'))applySky();else sky.addEventListener('loaded',applySk
 
 /* U-Treppe ab Diele + Lager darunter */
 function uStairs(p){
-const rise=0.18125,go=0.26,white='#ece9e2',wood='#b5824e';
-function step(x,z,h,w,d){const b=box(p,x,h/2,z,w,h,d,white);H.walkables.push(b);
-box(p,x,h+0.015,z,w,0.03,d,wood,{cls:'wood'});}
+const rise=0.18125,go=0.26,col='#cfd2d5';
+function step(x,z,h,w,d){const b=box(p,x,h/2,z,w,h,d,col,{cls:'steptile'});H.walkables.push(b);}
 // Lauf 1: 8 Stufen +X (Ost), Nordband z~4,7 (Einstieg links aus der Diele)
 for(let i=1;i<=8;i++){step(6.6+(i-0.5)*go,4.7,i*rise,go,1.0);}
 // Podest (Ost) auf 1,45 m
-const land=box(p,9.0,1.36,5.25,0.9,0.18,2.1,white);H.walkables.push(land);
-box(p,9.0,1.465,5.25,0.9,0.03,2.1,wood,{cls:'wood'});
+const land=box(p,9.0,1.36,5.25,0.9,0.18,2.1,col,{cls:'steptile'});H.walkables.push(land);
 // Lauf 2: 8 Stufen -X (West), Südband z~5,8 -> oben in den Flur
 for(let k=9;k<=16;k++){step(8.55-((k-9)+0.5)*go,5.8,k*rise,go,1.0);}
-cyl(p,9.0,1.0,5.25,0.07,2.0,'#cfccc4');   // Pfosten am Podest
 label(p,7.5,4.7,'TREPPE',0.02);
+}
+// Warmer Wand-Einbauspot an der Treppe (wall 'N' = Nordwand z3,94 -> Licht nach Süden; 'S' = Südwand z6,48 -> Licht nach Norden)
+function stepLight(p,x,y,wall){
+const wz=wall==='N'?3.94:6.48, fz=wall==='N'?wz+0.06:wz-0.06, dir=wall==='N'?1:-1;
+box(p,x,y,fz,0.13,0.13,0.02,'#2a2c2e',{shadow:'none'});                 // dunkler Einbaurahmen
+const e=document.createElement('a-box');
+e.setAttribute('position',x+' '+y+' '+(fz+dir*0.012));
+e.setAttribute('width',0.09);e.setAttribute('height',0.09);e.setAttribute('depth',0.01);
+e.setAttribute('material','color:#fff0d6; emissive:#ffcc80; emissiveIntensity:1.8');
+e.setAttribute('shadow','cast:false; receive:false');p.appendChild(e);
+const l=document.createElement('a-entity');
+l.setAttribute('position',x+' '+y+' '+(fz+dir*0.35));
+l.setAttribute('light','type:point; color:#ffd7a0; intensity:0.5; distance:2.4; decay:1.3; castShadow:false');
+p.appendChild(l);
 }
 function lager(p){
 // Wand mit eingelassener Lofttür, rechts (Osten) durchgehend – kein Raum/keine Tür zur Garage dahinter
@@ -366,6 +397,11 @@ slabHole(p,0.44,0.44,9.56,10.56,2.90,0.15,'#c9cdd2',VOID.x1,VOID.z1,VOID.x2,VOID
 slabHole(p,0.44,0.44,9.56,10.56,5.40,0.20,'#d9dadb',null,null,null,null,false);
 box(p,13.2,2.65,4.5,6.0,0.15,8.6,'#d9dadb');
 uStairs(p);lager(p);
+// Treppen-Wandspots (pro 4 Stufen einer): Lauf 1 Nordwand, Lauf 2 Südwand
+stepLight(p,7.00,0.60,'N');
+stepLight(p,8.10,1.35,'N');
+stepLight(p,8.10,2.00,'S');
+stepLight(p,7.05,2.55,'S');
 
 /* ===== EG AUSSENWÄNDE ===== */
 wall(p,0,0.22,10,0.22,EG.base,EG.hExt,EXT,WALL,[
@@ -416,17 +452,17 @@ tile(p,1.5,11.0,8.5,14.0,0,'#d8e6c4','TERRASSE\n21,0 m²');
 
 /* ===== EG MÖBEL / ARMATUREN ===== */
 // Du/WC: begehbare Dusche NW + WC + Waschtisch
-furn(p,0.95,0.95,0.9,0.9,0.06,'#d7e6ef',0);
+/*furn(p,0.95,0.95,0.9,0.9,0.06,'#d7e6ef',0);
 box(p,1.42,1.0,0.95,0.04,2.0,0.9,GLASS,{opacity:0.3,roughness:0});
 box(p,0.95,1.0,1.42,0.9,2.0,0.04,GLASS,{opacity:0.3,roughness:0});
 furn(p,2.45,1.6,0.36,0.6,0.4,'#ffffff',0);
 furn(p, 1.0, 1.65, 0.5, 0.4, 0.85, '#ffffff', 0);
 
 // Garderobe
- furn(p, 3.6, 2, 1.23, 0.6, 2.7, '7a5230', 0); 
+//furn(p, 3.6, 2, 1.23, 0.6, 2.7, '7a5230', 0); 
 
 // Küche (offen)
-furn(p,0.95,6.0,0.55,2.6,0.9,'#b8bcc0',0);
+/*furn(p,0.95,6.0,0.55,2.6,0.9,'#b8bcc0',0);
 furn(p,2.4,4.95,2.6,0.55,0.9,'#b8bcc0',0);
 furn(p,2.5,6.6,1.6,0.7,0.9,'#c4c8cc',0);
 furn(p,3.7,5.0,0.55,0.55,1.9,'#e0e3e7',0);
@@ -477,38 +513,40 @@ furn(p,15.6,7.2,0.5,2.0,1.9,'#8a7d68',0);
 
 /* ===== OBERGESCHOSS ===== */
 // Außenwände + Fenster (BRH 0,85)
-wall(p,0,0.22,10,0.22,OG.base,OG.hExt,EXT,WALL,[
+wall(p,0,0.22,10,0.22,OG.base,OG.hExt,EXT,WALL,[                                                  // NORDwand  (Fenster: Kind 3 / Ankleide / Schlafen)
 {start:1.0,width:1.5,sill:0.85,head:2.00,glass:true},
 {start:4.6,width:1.1,sill:0.85,head:2.00,glass:true},
 {start:7.2,width:1.5,sill:0.85,head:2.00,glass:true}]);
-wall(p,0,10.78,10,10.78,OG.base,OG.hExt,EXT,WALL,[
+wall(p,0,10.78,10,10.78,OG.base,OG.hExt,EXT,WALL,[                                                // SÜDwand   (Fenster: Kind 2 / Kind 1)
 {start:1.0,width:1.5,sill:0.85,head:2.00,glass:true},
 {start:7.0,width:1.6,sill:0.85,head:2.00,glass:true}]);
-wall(p,0.22,0,0.22,11,OG.base,OG.hExt,EXT,WALL,[
+wall(p,0.22,0,0.22,11,OG.base,OG.hExt,EXT,WALL,[                                                  // WESTwand  (Fenster: Kind 3 / Bad / Kind 2)
 {start:1.9,width:1.3,sill:0.85,head:2.00,glass:true},
 {start:5.0,width:1.3,sill:0.85,head:2.00,glass:true},
 {start:8.0,width:1.4,sill:0.85,head:2.00,glass:true}]);
-wall(p,9.78,0,9.78,11,OG.base,OG.hExt,EXT,WALL,[{ start: 7.8, width: 1.4, sill: 0.85, head: 2.00, glass: true }]);
+wall(p,9.78,0,9.78,11,OG.base,OG.hExt,EXT,WALL,[{start:7.8,width:1.4,sill:0.85,head:2.00,glass:true}]); // OSTwand (Fenster: Kind 1)
 
 // Innenwände (Türöffnungen als Lücken)
-wall(p,3.99,0.44,3.99,4.08,OG.base,OG.hInt,INT,WALL,[{start:2.76,width:0.85,sill:0,head:2.05}]);
-wall(p,0.44,4.08,3.95,4.08,OG.base,OG.hInt,INT,WALL,[]);
-wall(p,6.64,0.44,6.64,3.94,OG.base,OG.hInt,INT,WALL,[{start:0.46,width:0.85,sill:0,head:2.05}]);
-wall(p,4.03,2.99,6.40,2.99,OG.base,OG.hInt,INT,WALL,[{start:0.97,width:0.85,sill:0,head:2.05}]);
-wall(p,6.64,3.94,9.56,3.94,OG.base,OG.hInt,INT,WALL,[]);
-wall(p,3.95,4.08,3.95,7.07,OG.base,OG.hInt,INT,WALL,[{start:1.42,width:0.85,sill:0,head:2.05}]);
-wall(p,0.44,7.07,3.95,7.07,OG.base,OG.hInt,INT,WALL,[]);
-wall(p,4.205,7.19,4.205,10.56,OG.base,OG.hInt,INT,WALL,[{start:0.31,width:0.85,sill:0,head:2.05}]);
-wall(p,4.03,8.70,6.40,8.70,OG.base,OG.hInt,INT,WALL,[{start:0.77,width:0.76,sill:0,head:2.05}]);
-wall(p,6.40,2.99,6.40,3.94,OG.base,OG.hInt,INT,WALL,[]);
-wall(p, 6.40, 6.48, 6.40, 8.70, OG.base, OG.hInt, INT, WALL, [{ start: 1.02, width: 0.85, sill: 0, head: 2.05 }]);
+wall(p,3.99,0.44,3.99,4.08,OG.base,OG.hInt,INT,WALL,[{start:2.76,width:0.85,sill:0,head:2.05}]);  // Kind 3 | Ankleide / Flur  (Tür südlich -> endet im Flur)
+wall(p,0.44,4.08,3.95,4.08,OG.base,OG.hInt,INT,WALL,[]);                                          // Kind 3 | Bad  (Trennwand)
+wall(p,6.64,0.44,6.64,3.94,OG.base,OG.hInt,INT,WALL,[{start:0.46,width:0.85,sill:0,head:2.05}]);  // Ankleide | Schlafen  (Tür NO)
+wall(p,4.03,2.99,6.40,2.99,OG.base,OG.hInt,INT,WALL,[{start:0.97,width:0.85,sill:0,head:2.05}]);  // Ankleide | Flur  (Tür)
+wall(p,6.64,3.94,9.56,3.94,OG.base,OG.hInt,INT,WALL,[]);                                          // Schlafen | Treppe  (Südwand Schlafen, ohne Tür)
+wall(p,3.95,4.08,3.95,7.07,OG.base,OG.hInt,INT,WALL,[{start:1.42,width:0.85,sill:0,head:2.05}]);  // Bad | Flur  (Tür)
+wall(p,0.44,7.07,3.95,7.07,OG.base,OG.hInt,INT,WALL,[]);                                          // Bad | Kind 2  (Trennwand)
+wall(p, 3.95, 7.07, 3.95, 10.56, OG.base, OG.hInt, INT, WALL, [{ start: 0.31, width: 0.85, sill: 0, head: 2.05 }]); // Kind 2 | Flur / Abst  (Tür nördlich -> endet im Flur)
+wall(p, 6.40, 8.70, 6.40, 10.56, OG.base, OG.hInt, INT, WALL, []);                                      // Abst. | Kind 1
+wall(p,4.03,8.70,6.40,8.70,OG.base,OG.hInt,INT,WALL,[{start:0.77,width:0.76,sill:0,head:2.05}]);  // Flur | Abst  (Tür)
+wall(p, 6.40, 2.99, 6.40, 3.94, OG.base, OG.hInt, INT, WALL, []);                                          // Flur | Schlafen  (kurzes Wandstück neben der Treppe, nördlich)
+    wall(p, 6.40, 6.48, 10.56, 6.48, OG.base, OG.hInt, INT, WALL, []);                                          // Flur | Schlafen  (kurzes Wandstück neben der Treppe. südlich)
+wall(p,6.40,6.48,6.40,8.70,OG.base,OG.hInt,INT,WALL,[{start:1.02,width:0.85,sill:0,head:2.05}]);  // Flur | Kind 1  (Tür; dazwischen z3,94-6,48 = offenes Treppenauge)
 
 // Greifbare Türen
 door(p,3.99,3.20,0.85,2.90,'z',1, 1);   // Kind 3 -> Flur
 door(p,6.64,0.90,0.85,2.90,'z',1, 1);   // Ankleide -> Schlafen (NO)
 door(p,5.00,2.99,0.85,2.90,'x',1,-1);   // Ankleide -> Flur
 door(p,3.95,5.50,0.85,2.90,'z',1, 1);   // Bad -> Flur
-door(p,4.205,7.50,0.85,2.90,'z',1, 1);  // Kind 2 -> Flur
+door(p,3.95,7.40,0.85,2.90,'z',1, 1);  // Kind 2 -> Flur
 door(p,4.80,8.70,0.76,2.90,'x',1, 1);   // Abst -> Flur
 door(p, 6.40, 7.50, 0.85, 2.90, 'z', 1, 1);   // Kind 1 -> Flur
 
@@ -523,7 +561,7 @@ tile(p,4.03,2.99,6.40,8.70,2.90,'#e6e3da','FLUR\n10,34 m²');
 tile(p, 4.205, 8.70, 6.40, 10.56, 2.90, '#e6e3da', 'ABST.\n4,11 m²');
 
 // Möbel
-furn(p,8.0,2.2,1.8,2.0,0.5,'#8a93a8',2.90);
+/*furn(p,8.0,2.2,1.8,2.0,0.5,'#8a93a8',2.90);
 furn(p,9.2,0.9,0.45,0.4,0.5,'#7a5230',2.90);
 furn(p,4.9,1.5,0.6,2.4,2.0,'#b0a48f',2.90);
 furn(p,1.6,2.6,1.0,2.0,0.5,'#9ec3a0',2.90);
@@ -535,7 +573,7 @@ furn(p,3.3,7.8,1.2,0.6,0.74,'#c0a070',2.90);
 furn(p, 5.3, 9.6, 1.0, 1.6, 2.0, '#a89b86', 2.90);
 
 // Bad: begehbare Dusche NW + Wanne + Waschtisch + WC
-furn(p,1.0,4.6,0.9,0.9,0.06,'#d7e6ef',2.90);
+/*furn(p,1.0,4.6,0.9,0.9,0.06,'#d7e6ef',2.90);
 box(p,1.47,3.90,4.6,0.04,2.0,0.9,GLASS,{opacity:0.3,roughness:0.06,shadow:'none'});
 box(p,1.0,3.90,5.07,0.9,2.0,0.04,GLASS,{opacity:0.3,roughness:0.06,shadow:'none'});
 furn(p,3.4,6.6,0.75,1.7,0.55,'#eef3f7',2.90);
@@ -543,9 +581,9 @@ furn(p,2.6,4.5,1.0,0.5,0.85,'#eef3f7',2.90);
 furn(p,3.5,4.7,0.36,0.6,0.4,'#ffffff',2.90);
 
 /* ===== MASS-HILFEN ===== */
-human(p,6.5,9.5,0.0);
+/*human(p,6.5,9.5,0.0);
 human(p,5.0,-2.5,0.0);
-human(p,2.0,2.4,2.90);
+human(p,2.0,2.4,2.90);*/
 ruler(p,9.3,8.5,0.0);
 applyRealism();
 
