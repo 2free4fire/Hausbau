@@ -72,7 +72,7 @@ const p=this.el.object3D.position;
 this.ray.ray.origin.set(p.x,p.y+2.2,p.z);
 const hits=this.ray.intersectObjects(this.walkables,true);
 let best=null;
-for(const h of hits){if(h.point.y<=p.y+1.9&&(!best||h.point.y>best.point.y))best=h;}
+for(const h of hits){if(h.point.y<=p.y+0.6&&(!best||h.point.y>best.point.y))best=h;}
 if(best)this.targetY=best.point.y;
 p.y+=(this.targetY-p.y)*Math.min(1,dt/120);}
 }});
@@ -180,7 +180,7 @@ const H=window.HOUSE;
 const WALL='#b4b8bd',GLASS='#bfe3f2',ANTH='#34383d',INT=0.12,EXT=0.44;
 const EG={base:0.0,hExt:2.90,hInt:2.75};
 const OG={base:3.0,hExt:2.50,hInt:2.50};
-const VOID={x1:6.42,z1:3.72,x2:8.95,z2:6.26};
+const VOID={x1:6.5,z1:3.72,x2:9.6,z2:6.26};
 
 function box(p,x,y,z,w,h,d,color,opts){
 opts=opts||{};const e=document.createElement('a-box');
@@ -410,10 +410,10 @@ slabHole(p,0.44,0.44,9.56,10.56,6.0,0.20,'#d9dadb',null,null,null,null,false);
 box(p,13.2,2.65,4.5,6.0,0.15,8.6,'#d9dadb');
 uStairs(p);
 // Treppen-Wandspots (pro 4 Stufen einer): Lauf 1 Nordwand, Lauf 2 Südwand
-stepLight(p,7.0,0.60,'N');
-stepLight(p,8.0,1.30,'N');
-stepLight(p,8.0,2.00,'S');
-stepLight(p,7.0,2.60,'S');
+stepLight(p,7.40,1.05,'N');   // Lauf 1, Stufe 4
+stepLight(p,8.45,1.75,'N');   // Lauf 1, Stufe 8
+stepLight(p,7.66,2.45,'S');   // Lauf 2, Stufe 12
+stepLight(p,6.88,2.70,'S');   // Lauf 2, Stufe 16
 
 /* ===== EG (aus IFC: Wände) ===== */
 wall(p,0.22,0.22,10.22,0.22,EG.base,3,0.44,WALL,[{start:1.415,width:1.1,sill:1,head:2.5,glass:true},{start:3.245,width:0.76,sill:1,head:2.5,glass:true},{start:4.686,width:1.51,sill:0,head:2.3},{start:7.609,width:1.1,sill:1,head:2.5,glass:true}]); // SW - 020
@@ -436,7 +436,7 @@ wall(p,3.082,1.901,4.428,1.901,EG.base,2.8,0.125,WALL,[]); // SW - 042
 door(p,4.906,0.22,1.51,EG.base,'x',1,1);
 door(p,9.78,2.432,0.885,EG.base,'z',1,1);
 door(p,6.748,2.407,0.885,EG.base,'z',1,1);
-door(p,6.361,6.262,1.5,EG.base,'x',1,1);
+/* Tür SW-033 -> durch Lofttür (Schiebetür) ersetzt */
 door(p,3.04,3.67,1,EG.base,'x',1,1);
 door(p,3.082,1.12,0.885,EG.base,'z',1,1);
 
@@ -446,47 +446,11 @@ tile(p,0.66,0.22,3.082,2.525,EG.base,'#cfd2d5','03');
 tile(p,0.66,0.22,3.082,2.525,EG.base,'#cfd2d5','06');
 tile(p,0.66,3.865,9.78,10.34,EG.base,'#cfd2d5','11');
 tile(p,6.748,0.22,9.78,3.722,EG.base,'#cfd2d5','15');
+tile(p,3.082,0.22,6.748,3.72,EG.base,'#cfd2d5','DIELE');
 tile(p,1.5,11.0,8.5,14.0,0,'#cfd2d5','TERRASSE');
 
-/* ===== EG MÖBEL / ARMATUREN ===== */
-// Du/WC: begehbare Dusche NW + WC + Waschtisch
-/*furn(p,0.95,0.95,0.9,0.9,0.06,'#d7e6ef',0);
-box(p,1.42,1.0,0.95,0.04,2.0,0.9,GLASS,{opacity:0.3,roughness:0});
-box(p,0.95,1.0,1.42,0.9,2.0,0.04,GLASS,{opacity:0.3,roughness:0});
-furn(p,2.45,1.6,0.36,0.6,0.4,'#ffffff',0);
-furn(p, 1.0, 1.65, 0.5, 0.4, 0.85, '#ffffff', 0);
-
-// Garderobe
-//furn(p, 3.6, 2, 1.23, 0.6, 2.7, '7a5230', 0); 
-
-// Küche (offen)
-/*furn(p,0.95,6.0,0.55,2.6,0.9,'#b8bcc0',0);
-furn(p,2.4,4.95,2.6,0.55,0.9,'#b8bcc0',0);
-furn(p,2.5,6.6,1.6,0.7,0.9,'#c4c8cc',0);
-furn(p,3.7,5.0,0.55,0.55,1.9,'#e0e3e7',0);
-// Essen/Wohnen
-furn(p,2.5,9.0,1.6,0.9,0.75,'#7a5230',0);
-furn(p,1.9,9.0,0.45,0.45,0.9,'#5e4630',0);
-furn(p,3.1,9.0,0.45,0.45,0.9,'#5e4630',0);
-furn(p,2.5,8.4,0.45,0.45,0.9,'#5e4630',0);
-furn(p,2.5,9.6,0.45,0.45,0.9,'#5e4630',0);
-furn(p,8.7,9.0,0.95,2.4,0.8,'#5b6b8c',0);
-furn(p,7.6,9.0,0.6,1.1,0.4,'#6b4f33',0);
-furn(p,9.35,9.0,0.18,1.4,0.55,'#222222',0);
-// Büro
-furn(p,8.0,3,1.6,2,0.74,'#7a5230',0);
-// HAR
-furn(p,0.9,4.2,0.6,0.6,1.7,'#cdd2d8',0);
-cyl(p,1.5,0.8,4.2,0.3,1.6,'#b9bfc6');
-furn(p,0.9,2.6,0.6,0.6,0.85,'#e6e9ec',0);
-furn(p,1.6,2.6,0.6,0.6,0.85,'#e6e9ec',0);
-// Luft-Wasser-Wärmepumpe (außen an Westwand)
-furn(p,-0.25,3.2,0.9,0.45,1.0,'#9aa0a6',0);
-label(p,-0.25,4.0,'WP',0.02);
-// Terrasse
-cyl(p,4.2,0.37,12.4,0.6,0.74,'#9a8f7a');
-furn(p,3.3,12.4,0.45,0.45,0.9,'#7a6f58',0);
-furn(p,5.1,12.4,0.45,0.45,0.9,'#7a6f58',0);
+/* ===== Lofttür (Glas-Schiebetür) hinter der Treppe (Öffnung SW-033) ===== */
+loft(p,4.86,6.26,1.5,0.0);
 
 /* ===== GARAGENBLOCK (EG) ===== */
 wall(p,10.0,0.15,16.4,0.15,0,2.45,0.30,WALL,[
@@ -502,12 +466,6 @@ tile(p,10.0,0.15,13.35,5.95,0,'#e2e2dd','GARAGE 1\n16,27 m²');
 tile(p,13.35,0.15,16.4,5.95,0,'#e2e2dd','GARAGE 2\n16,27 m²');
 tile(p,10.0,5.95,13.35,8.50,0,'#e2e2dd','MÜLL/RÄDER');
 tile(p,13.35,5.95,16.4,8.50,0,'#e2e2dd','GERÄTE');
-furn(p,11.85,3.0,1.85,4.5,1.45,'#3d6fae',0);
-furn(p,14.85,3.0,1.85,4.5,1.45,'#9a9ea4',0);
-furn(p,10.6,7.2,0.5,0.5,1.1,'#2f6e3a',0);
-furn(p,11.3,7.2,0.5,0.5,1.1,'#444444',0);
-furn(p,12.4,7.2,0.35,1.6,1.1,'#666666',0);
-furn(p,15.6,7.2,0.5,2.0,1.9,'#8a7d68',0);
 
 /* ===== OBERGESCHOSS (aus IFC: Wände) ===== */
 wall(p,0.22,10.78,10.22,10.78,OG.base,3,0.44,WALL,[{start:0.866,width:2.01,sill:0,head:2.3,glass:true},{start:4.347,width:1.01,sill:0,head:2.3,glass:true},{start:6.841,width:2.01,sill:0,head:2.3,glass:true}]); // SW - 026
@@ -530,10 +488,10 @@ wall(p,4.423,2.51,6.157,2.51,OG.base,3,0.125,WALL,[{start:0.562,width:0.76,sill:
 wall(p,4.618,6.084,9.78,6.084,OG.base,3,0.195,WALL,[{start:0.037,width:0.885,sill:0,head:2.23}]); // SW - 058
 
 /* ===== OG greifbare Türen ===== */
-door(p,4.423,3.561,0.88,OG.base,'z',1,1);
-door(p,4.618,5.045,0.88,OG.base,'z',1,1);
-door(p,6.27,7.282,0.885,OG.base,'z',1,1);
-door(p,6.157,3.6,0.88,OG.base,'z',1,1);
+door(p,4.423,3.561,0.88,OG.base,'z',-1,1); // Raum 16
+door(p,4.618,5.045,0.88,OG.base,'z',1,-1); // Raum 19
+door(p,6.27,7.282,0.885,OG.base,'z',-1,1); // Raum 21
+door(p,6.157,3.6,0.88,OG.base,'z',-1,1); // Raum 25
 door(p,4.985,2.51,0.76,OG.base,'x',1,1);
 door(p,4.655,6.084,0.885,OG.base,'x',1,1);
 
