@@ -257,6 +257,30 @@ const h2=document.createElement('a-sphere');
 h2.setAttribute('radius',0.045);h2.setAttribute('color','#c8ccd0');h2.setAttribute('position',(width-0.08)+' 1.05 0.06');hinge.appendChild(h2);
 hinge.setAttribute('grabbable-door','swing:'+swing);p.appendChild(hinge);}
 
+/* Verdeckte Tuer: buendig, Wandfarbe, ohne Griff (optisch wie Wand) */
+function secretDoor(p,hx,hz,width,base,axis,dir,swing){
+let yaw=0;
+if(axis==='x')yaw=(dir>0)?0:Math.PI;else yaw=(dir>0)?-Math.PI/2:Math.PI/2;
+const hinge=document.createElement('a-entity');
+hinge.setAttribute('position',hx+' '+base+' '+hz);
+hinge.setAttribute('rotation','0 '+THREE.MathUtils.radToDeg(yaw)+' 0');hinge.setAttribute('class','door');
+const leaf=document.createElement('a-box');
+leaf.setAttribute('class','door-leaf measurable');
+leaf.setAttribute('width',width);leaf.setAttribute('height',1.95);leaf.setAttribute('depth',0.06);
+leaf.setAttribute('material','color:'+WALL+'; roughness:0.9; metalness:0');
+leaf.setAttribute('position',(width/2)+' 0.975 0');hinge.appendChild(leaf);
+hinge.setAttribute('grabbable-door','swing:'+swing);p.appendChild(hinge);}
+
+/* Abstellraum unter der Treppe (unter Lauf 2) */
+function abstellraum(p){
+/* Raum unter Lauf 2 (z 5,0-6,07) - oben durch die Treppe begrenzt (Stufen = schraege Decke) */
+wall(p,6.55,5.0,6.55,6.07,0,2.7,INT,WALL,[{start:0.25,width:0.7,sill:0,head:1.95}]); // Westwand + verdeckte Tuer (Richtung Diele)
+wall(p,7.90,5.0,7.90,6.07,0,2.0,INT,WALL,[]);                                          // Ostwand
+wall(p,6.55,5.0,7.25,5.0,0,2.4,INT,WALL,[]); wall(p,7.25,5.0,7.90,5.0,0,2.0,INT,WALL,[]);   // Nordwand, 2-stufig
+wall(p,6.55,6.07,7.25,6.07,0,2.4,INT,WALL,[]); wall(p,7.25,6.07,7.90,6.07,0,2.0,INT,WALL,[]); // Suedwand, 2-stufig
+secretDoor(p,6.55,5.25,0.7,0,'z',1,1);   // verdeckte, grifflose Tuer in der Westwand
+label(p,7.15,5.5,'ABSTELLRAUM',0.02);}
+
 /* Schiebetür (Lofttür): Öffnung x1..x1+width an Wand z */
 function loft(p,x1,z,width,base){
 const leaf=document.createElement('a-box');
@@ -408,7 +432,7 @@ box(p,13.2,-0.05,4.5,6.0,0.10,8.6,'#8d9094');H.walkables.push(p.lastChild);
 slabHole(p,0.44,0.44,9.56,10.56,3.0,0.15,'#c9cdd2',VOID.x1,VOID.z1,VOID.x2,VOID.z2,true);
 slabHole(p,0.44,0.44,9.56,10.56,6.0,0.20,'#d9dadb',null,null,null,null,false);
 box(p,13.2,2.65,4.5,6.0,0.15,8.6,'#d9dadb');
-uStairs(p);
+uStairs(p);abstellraum(p);
 // Treppen-Wandspots (pro 4 Stufen einer): Lauf 1 Nordwand, Lauf 2 Südwand
 stepLight(p,7.40,1.05,'N');   // Lauf 1, Stufe 4
 stepLight(p,8.45,1.75,'N');   // Lauf 1, Stufe 8
