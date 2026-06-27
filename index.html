@@ -355,24 +355,25 @@ if(sky.getObject3D('mesh'))applySky();else sky.addEventListener('loaded',applySk
 /* U-Treppe ab Diele + Lager darunter */
 function uStairs(p){
 const col='#cfd2d5';
-function step(x,z,h,w,d){var b=box(p,x,h/2,z,w,h,d,col,{cls:'steptile'});H.walkables.push(b);}
-step(6.623,3.917,0.1,0.27,1.08);
-step(6.623,4.455,0.287,0.27,1.08);
-step(6.883,4.455,0.475,0.27,1.08);
-step(7.144,4.455,0.662,0.27,1.08);
-step(7.404,4.455,0.85,0.27,1.08);
-step(7.664,4.455,1.038,0.27,1.08);
-step(7.924,4.455,1.225,0.27,1.08);
-step(8.185,4.455,1.413,0.27,1.08);
-step(8.445,4.455,1.6,0.27,1.08);
-step(8.705,5.53,1.788,0.27,1.08);
+function step(x,z,h,w,d){var bh=0.34;var b=box(p,x,h-bh/2,z,w,bh,d,col,{cls:'steptile'});H.walkables.push(b);}
+//step(6.623,3.917,0.1,0.27,1.08); //0
+step(6.623,4.455,0.287,0.27,1.08); //1
+step(6.883,4.455,0.475,0.27,1.08); //2
+step(7.144,4.455,0.662,0.27,1.08); //3
+step(7.404,4.455,0.85,0.27,1.08); //4
+step(7.664,4.455,1.038,0.27,1.08); //5
+step(7.924,4.455,1.225,0.27,1.08); //6
+step(8.185,4.455,1.413,0.27,1.08); //7
+step(8.445,4.455,1.6,0.27,1.08); //8
+    step(9.2, 4.99, 1.788, 1.5, 2.16); //Plattform
 step(8.445,5.53,1.975,0.27,1.08);
 step(8.185,5.53,2.163,0.27,1.08);
 step(7.924,5.53,2.35,0.27,1.08);
 step(7.664,5.53,2.538,0.27,1.08);
 step(7.404,5.53,2.725,0.27,1.08);
-step(7.144,5.53,2.913,0.27,1.08);
-step(6.883,5.53,3.1,0.27,1.08);
+step(7.144, 5.53, 2.913, 0.27, 1.08);
+step(6.883, 5.53, 3.1, 0.27, 1.08);
+    step(6.623, 5.53, 3.1, 0.27, 1.08);
 label(p,7.6,4.46,'TREPPE',0.02);
 }
 // Warmer Wand-Einbauspot an der Treppe (wall 'N' = Nordwand z3,94 -> Licht nach Süden; 'S' = Südwand z6,48 -> Licht nach Norden)
@@ -520,12 +521,13 @@ wall(p,4.618,3.845,4.618,7.109,OG.base,3,0.195,WALL,[{start:1.2,width:0.88,sill:
 wall(p,4.618,7.109,0.22,7.109,OG.base,3,0.125,WALL,[]); // SW - 052
 wall(p,3.862,10.78,3.862,7.822,OG.base,3,0.125,WALL,[]); // SW - 053
 wall(p,6.27,10.78,6.27,6.09,OG.base,3,0.125,WALL,[{start:3.498,width:0.885,sill:0,head:2.23}]); // SW - 054
-wall(p,6.27,6.09,9.78,6.067,OG.base,3,0.195,WALL,[]); // SW - 055
+    // wall(p, 6.27, 6.09, 9.78, 6.067, OG.base, 3, 0.195, WALL, []); // SW - 055
+    //wall(p, 6.27, 6.09, 9.78, 6.067, OG.base, 3, 0.195, WALL, []); // SW - 055
 wall(p,1.556,4.867,3.556,4.867,OG.base,3,0.125,WALL,[]); // SW - 060
 wall(p,2.41,4.867,2.41,3.72,OG.base,3,0.125,WALL,[]); // SW - 061
 wall(p,6.157,3.917,6.157,0.22,OG.base,3,0.125,WALL,[{start:0.317,width:0.88,sill:0,head:2.23}]); // SW - 049
 wall(p,4.423,2.51,6.157,2.51,OG.base,3,0.125,WALL,[{start:0.562,width:0.76,sill:0,head:2.23}]); // SW - 057
-wall(p,4.618,6.084,6.27,6.084,OG.base,3,0.195,WALL,[{start:0.037,width:0.885,sill:0,head:2.23}]); // SW - 058
+wall(p,4.618,6.084,9.78,6.084,OG.base,3,0.195,WALL,[{start:0.037,width:0.885,sill:0,head:2.23}]); // SW - 058
 
 /* ===== OG greifbare Türen ===== */
 door(p,4.423,3.561,0.88,OG.base,'z',1,1);
