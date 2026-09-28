@@ -1,33 +1,680 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hausbegehung</title>
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
+  <title>Hausbegehung VR</title>
+  <link rel="icon" href="data:,">
+  <style>
+    html, body { margin: 0; height: 100%; background: #111; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    canvas { display: block; }
+    #overlay {
+      position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, #2a2f36 0%, #111 75%); color: #eee; z-index: 10; text-align: center; padding: 16px;
+      transition: opacity .6s;
+    }
+    #overlay.hidden { opacity: 0; pointer-events: none; }
+    #overlay h1 { font-weight: 300; letter-spacing: .08em; margin: 0 0 18px; font-size: clamp(22px, 4vw, 36px); }
+    #bar { width: min(420px, 80vw); height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+    #bar > div { height: 100%; width: 0; background: #e8c170; transition: width .2s; }
+    #status { margin-top: 12px; font-size: 14px; color: #aaa; }
+    #help {
+      position: fixed; left: 12px; bottom: 12px; z-index: 5; color: #ddd; background: rgba(0,0,0,.55);
+      padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.55; max-width: 360px;
+    }
+    #help b { color: #e8c170; font-weight: 600; }
+    #mode { position: fixed; top: 12px; left: 12px; z-index: 5; color: #fff; background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 6px; font-size: 13px; display: none; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./lib/three/build/three.module.js",
+      "three/addons/": "./lib/three/addons/",
+      "three-mesh-bvh": "./lib/three-mesh-bvh/index.module.js"
+    }
+  }
+  </script>
 </head>
-<body style="margin:0">
-  <a-scene>
-    <a-assets>
-      <a-asset-item id="haus-modell" src="grundriss.glb"></a-asset-item>
-    </a-assets>
+<body>
+  <div id="overlay">
+    <h1>Hausbegehung</h1>
+    <div id="bar"><div></div></div>
+    <div id="status">Lade Modell …</div>
+  </div>
+  <div id="mode"></div>
+  <div id="help">
+    <b>Quest 3:</b> „ENTER VR“ unten antippen<br>
+    Linker Stick: gehen · Linker Trigger halten: schneller<br>
+    Rechter Stick: drehen (30°-Schritte)<br>
+    A: Standort wechseln (Außen / EG / OG) · B: Geistmodus<br>
+    X: Standort neu starten · Y: Hilfe ein/aus<br>
+    Türen öffnen sich, wenn du darauf zugehst.<br>
+    <b>PC:</b> Klick ins Bild, WASD + Maus, Shift = schneller,<br>
+    F = Standort, G = Geistmodus, R = neu starten
+  </div>
 
-    <!-- Dein Grundriss als 3D-Modell, in echten Metern -->
-    <a-entity gltf-model="#haus-modell" position="0 0 0" shadow="cast: true; receive: true"></a-entity>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 
-    <!-- Licht -->
-    <a-entity light="type: ambient; intensity: 0.6"></a-entity>
-    <a-entity light="type: directional; intensity: 0.8" position="2 4 2"></a-entity>
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
-    <!-- Spieler: Joystick-Bewegung (movement-controls aus aframe-extras) + Blickrichtung per Headset -->
-    <a-entity id="rig" movement-controls="speed: 0.12" position="0 1.7 5">
-      <a-entity camera look-controls></a-entity>
-      <a-entity laser-controls="hand: left" raycaster="objects: .clickable"></a-entity>
-      <a-entity laser-controls="hand: right" raycaster="objects: .clickable"></a-entity>
-    </a-entity>
+// ------------------------------------------------------------------
+// Einstellungen – hier kannst du anpassen
+// ------------------------------------------------------------------
+const CONFIG = {
+  model: 'haus.glb',
+  walkSpeed: 1.4,          // m/s, normales Gehtempo
+  runSpeed: 2.6,           // m/s, mit gehaltenem Trigger / Shift
+  snapAngle: 30,           // Grad pro Drehschritt
+  bodyRadius: 0.22,        // Abstand zur Wand in m
+  maxStep: 0.40,           // max. Stufenhöhe, die automatisch erstiegen wird
+  eyeHeight: 1.65,         // Augenhöhe im Desktop-Modus
+  vignette: true,          // Tunnelblick beim Gehen gegen Übelkeit
+  // Startpunkte je Etage: [x, z, Blickrichtung in Grad]; y wird automatisch aus dem Boden ermittelt
+  levels: [
+    { name: 'Vor dem Haus', y: -2.84, spawn: [0.57, -8.5, 180] },
+    { name: 'Erdgeschoss',  y: -2.81, spawn: [-0.5, -2.0, 180] },
+    { name: 'Obergeschoss', y: 0.0,   spawn: [0.1, 0.0, 0] },
+  ],
+  // Ergänzte Bauteile, die im Export fehlen
+  ceilingEG: -0.21,                        // Unterseite Decke über EG
+  stairHole: [0.95, -1.35, 4.55, 0.62],    // Treppenloch [xMin, zMin, xMax, zMax]
+  roofY: 2.60,                             // Oberkante Wände OG = Unterseite Flachdach
+  roofThickness: 0.30,
+  sunAzimuth: 215,         // Sonnenrichtung (Grad, 180 = Süden)
+  sunElevation: 38,        // Sonnenhöhe (Grad)
+};
 
-    <a-sky color="#e8e8e8"></a-sky>
-  </a-scene>
+const params = new URLSearchParams(location.search);
+const $ = (s) => document.querySelector(s);
+const setStatus = (t) => { $('#status').textContent = t; };
+
+// ------------------------------------------------------------------
+// Renderer / Szene
+// ------------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false;      // statische Schatten: einmal berechnen, spart Leistung auf der Quest
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+renderer.xr.setFoveation(0.5);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.6;
+
+// Himmel
+const sky = new Sky();
+sky.scale.setScalar(900);
+const skyU = sky.material.uniforms;
+skyU.turbidity.value = 4; skyU.rayleigh.value = 1.2; skyU.mieCoefficient.value = 0.004; skyU.mieDirectionalG.value = 0.85;
+const sunDir = new THREE.Vector3().setFromSphericalCoords(1,
+  THREE.MathUtils.degToRad(90 - CONFIG.sunElevation), THREE.MathUtils.degToRad(CONFIG.sunAzimuth));
+skyU.sunPosition.value.copy(sunDir);
+scene.add(sky);
+
+// Licht
+const hemi = new THREE.HemisphereLight(0xeef3fa, 0xd8cfc2, 0.9);   // Bodenfarbe hell = Licht, das von Boden/Wänden zurückstrahlt
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+// Spieler-Rig: rig = Füße auf dem Boden, camera = Kopf
+const rig = new THREE.Group();
+scene.add(rig);
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 2000);
+camera.position.set(0, CONFIG.eyeHeight, 0);
+rig.add(camera);
+
+// Komfort-Vignette (dunkelt die Ränder beim Gehen ab)
+const vignette = new THREE.Mesh(
+  new THREE.SphereGeometry(0.2, 32, 16),
+  new THREE.ShaderMaterial({
+    uniforms: { uOpacity: { value: 0 } },
+    vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: 'uniform float uOpacity; varying vec3 vP; void main(){ float d = dot(normalize(vP), vec3(0.,0.,-1.)); float a = (1.0 - smoothstep(0.62, 0.9, d)) * uOpacity; gl_FragColor = vec4(0.,0.,0.,a); }',
+    transparent: true, depthTest: false, depthWrite: false, side: THREE.BackSide,
+  })
+);
+vignette.renderOrder = 999;
+vignette.frustumCulled = false;
+vignette.visible = false;
+camera.add(vignette);
+// in VR die aktuelle Kopfpose verwenden (sonst hinkt die Vignette einen Frame hinterher)
+vignette.onBeforeRender = () => vignette.matrixWorld.copy(camera.matrixWorld);
+
+// ------------------------------------------------------------------
+// Modell laden
+// ------------------------------------------------------------------
+const colliders = [];
+let modelBox = new THREE.Box3();
+
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+loader.load(CONFIG.model, (gltf) => {
+  const model = gltf.scene;
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m) continue;
+      const n = (m.name || '').toLowerCase();
+      if (n.includes('glass') || n.includes('glas') || n === 'trans') {
+        m.transparent = true; m.opacity = Math.min(m.opacity ?? 1, 0.22);
+        m.roughness = 0.05; m.metalness = 0; m.depthWrite = false;
+        o.castShadow = false;
+      }
+      if (m.map) m.map.anisotropy = 4;
+    }
+    o.geometry.computeBoundsTree();
+    const isDoor = o.name.startsWith('DOOR_') || o.parent?.name?.startsWith('DOOR_');
+    if (isDoor) o.castShadow = false;   // bewegliche Teile ohne Schattenwurf (statische Schatten)
+    else colliders.push(o);
+  });
+  scene.add(model);
+  model.updateMatrixWorld(true);
+  modelBox.setFromObject(model);
+  setupDoors(model);
+
+  // Außengelände
+  const size = modelBox.getSize(new THREE.Vector3());
+  const center = modelBox.getCenter(new THREE.Vector3());
+  const groundY = CONFIG.levels[0].y - 0.03;   // Gelände knapp unter dem EG-Fußboden
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(400, 64),
+    new THREE.MeshStandardMaterial({ color: 0x6f8a4e, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(center.x, groundY, center.z);
+  ground.receiveShadow = true;
+  ground.geometry.computeBoundsTree();
+  scene.add(ground);
+  colliders.push(ground);          // damit man auch draußen Boden unter den Füßen hat
+
+  // Weiße Decke über dem EG (mit Treppenloch) und Flachdach über dem OG
+  const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
+  const b = modelBox, m = 0.01;
+  const shape = new THREE.Shape();
+  shape.moveTo(b.min.x + m, b.min.z + m); shape.lineTo(b.max.x - m, b.min.z + m);
+  shape.lineTo(b.max.x - m, b.max.z - m); shape.lineTo(b.min.x + m, b.max.z - m); shape.closePath();
+  const [hx0, hz0, hx1, hz1] = CONFIG.stairHole;
+  const hole = new THREE.Path();
+  hole.moveTo(hx0, hz0); hole.lineTo(hx0, hz1); hole.lineTo(hx1, hz1); hole.lineTo(hx1, hz0); hole.closePath();
+  shape.holes.push(hole);
+  const ceilGeo = new THREE.ShapeGeometry(shape);
+  ceilGeo.rotateX(Math.PI / 2);                   // Normale zeigt nach unten
+  const ceiling = new THREE.Mesh(ceilGeo, ceilingMat);
+  ceiling.position.y = CONFIG.ceilingEG;
+  ceiling.receiveShadow = true;
+  scene.add(ceiling);
+
+  const roofMats = [
+    new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.9 }),   // Seiten: Putz
+    new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ color: 0x8c8c88, roughness: 1 }),     // oben: Kies
+    ceilingMat,                                                            // unten: Decke
+    new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.9 }),
+  ];
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(size.x + 0.1, CONFIG.roofThickness, size.z + 0.1), roofMats);
+  roof.position.set(center.x, CONFIG.roofY + CONFIG.roofThickness / 2, center.z);
+  roof.castShadow = true; roof.receiveShadow = true;
+  scene.add(roof);
+
+  // Schattenkamera auf das Haus zuschneiden
+  const r = Math.max(size.x, size.z) * 0.8 + 2;
+  sun.position.copy(center).addScaledVector(sunDir, 40);
+  sun.target.position.copy(center);
+  Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 100 });
+  sun.shadow.camera.updateProjectionMatrix();
+  renderer.shadowMap.needsUpdate = true;
+
+  goToLevel(0);
+  $('#overlay').classList.add('hidden');
+  if (params.has('top')) setupTopView(parseFloat(params.get('top')));
+}, (e) => {
+  if (e.total) {
+    const p = e.loaded / e.total * 100;
+    $('#bar > div').style.width = p + '%';
+    setStatus(`Lade Modell … ${Math.round(p)} %`);
+  } else {
+    setStatus(`Lade Modell … ${(e.loaded / 1048576).toFixed(1)} MB`);
+  }
+}, (err) => {
+  console.error(err);
+  setStatus('Fehler beim Laden von ' + CONFIG.model + ' – liegt die Datei neben index.html?');
+});
+
+// ------------------------------------------------------------------
+// Türen: öffnen sich automatisch, wenn man darauf zugeht
+// ------------------------------------------------------------------
+const doors = [];
+function setupDoors(model) {
+  const parts = {};
+  model.traverse((o) => {
+    const m = o.name.match(/^DOOR_([a-z0-9]+)_(leaf|h\d)$/i);
+    if (!m) return;
+    const p = (parts[m[1]] ||= { leaf: null, handles: [] });
+    if (m[2] === 'leaf') p.leaf = o; else p.handles.push(o);
+  });
+  for (const id in parts) {
+    const { leaf, handles } = parts[id];
+    if (!leaf || !handles.length) continue;
+    const box = new THREE.Box3().setFromObject(leaf);
+    const c = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const hc = new THREE.Vector3();
+    handles.forEach((h) => hc.add(new THREE.Box3().setFromObject(h).getCenter(new THREE.Vector3())));
+    hc.divideScalar(handles.length);
+    const alongX = size.x > size.z;                   // Türblatt verläuft entlang x
+    const normal = alongX ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+    const a = alongX ? 'x' : 'z';
+    const hingeCoord = hc[a] > c[a] ? box.min[a] : box.max[a];   // Scharnier gegenüber dem Griff
+    const pivot = new THREE.Group();
+    pivot.position.copy(c); pivot.position[a] = hingeCoord; pivot.position.y = box.min.y;
+    model.parent.add(pivot);
+    pivot.updateMatrixWorld(true);
+    pivot.attach(leaf); handles.forEach((h) => pivot.attach(h));
+    const edge = new THREE.Vector3(); edge[a] = Math.sign(c[a] - hingeCoord);   // Scharnier -> freie Kante
+    doors.push({ pivot, center: c, normal, edge, angle: 0, target: 0 });
+  }
+}
+
+const _toHead = new THREE.Vector3();
+function updateDoors(dt, headPos) {
+  for (const d of doors) {
+    if (d.target === 0) {
+      _toHead.subVectors(headPos, d.center);
+      const dy = headPos.y - d.center.y;
+      if (dy > -0.5 && dy < 1.6 && Math.hypot(_toHead.x, _toHead.z) < 1.35) {
+        const side = Math.sign(_toHead.dot(d.normal)) || 1;
+        // freie Kante soll vom Betrachter weg schwingen
+        const rotated = new THREE.Vector3(d.edge.z, 0, -d.edge.x);   // edge um +90° gedreht
+        d.target = rotated.dot(d.normal) * -side > 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+    }
+    if (d.angle !== d.target) {
+      const step = dt * 1.8;
+      const diff = d.target - d.angle;
+      d.angle = Math.abs(diff) <= step ? d.target : d.angle + Math.sign(diff) * step;
+      d.pivot.rotation.y = d.angle;
+    }
+  }
+}
+function closeDoors() {
+  for (const d of doors) { d.target = 0; d.angle = 0; d.pivot.rotation.y = 0; }
+}
+
+// ------------------------------------------------------------------
+// Raycasting-Helfer (Boden & Wände)
+// ------------------------------------------------------------------
+const ray = new THREE.Raycaster();
+ray.firstHitOnly = true;
+const DOWN = new THREE.Vector3(0, -1, 0);
+const UP = new THREE.Vector3(0, 1, 0);
+const tmpV = new THREE.Vector3();
+const tmpN = new THREE.Vector3();
+const nMat = new THREE.Matrix3();
+
+function castRay(origin, dir, far) {
+  ray.set(origin, dir);
+  ray.near = 0; ray.far = far;
+  const hits = ray.intersectObjects(colliders, false);
+  return hits.length ? hits[0] : null;
+}
+
+// Boden unter Position (x,z) finden, gesucht wird ab (currentFloor + maxStep) nach unten
+function findFloor(x, z, fromY) {
+  const hit = castRay(tmpV.set(x, fromY, z), DOWN, 6);
+  return hit ? hit.point.y : null;
+}
+
+// Fußfläche: Mitte + 4 Punkte im Umkreis, höchster Treffer zählt (überbrückt Fugen)
+const FOOT = [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.12], [0, -0.12]];
+function findFloorFoot(x, z, fromY) {
+  let best = null;
+  for (const [ox, oz] of FOOT) {
+    const f = findFloor(x + ox, z + oz, fromY);
+    if (f !== null && (best === null || f > best)) best = f;
+  }
+  return best;
+}
+
+function hitNormal(hit) {
+  if (!hit.face) return null;
+  nMat.getNormalMatrix(hit.object.matrixWorld);
+  return tmpN.copy(hit.face.normal).applyMatrix3(nMat).normalize();
+}
+
+// Horizontale Bewegung mit Kollision; gibt die erlaubte Verschiebung zurück
+const _o = new THREE.Vector3(), _d = new THREE.Vector3(), _side = new THREE.Vector3();
+function collide(head, floorY, move) {
+  const out = move.clone(); out.y = 0;
+  for (let iter = 0; iter < 2; iter++) {
+    const len = out.length();
+    if (len < 1e-6) return out;
+    _d.copy(out).divideScalar(len);
+    _side.set(-_d.z, 0, _d.x).multiplyScalar(CONFIG.bodyRadius * 0.7);
+    let best = null;
+    const heights = [floorY + CONFIG.maxStep + 0.05, floorY + 1.0, Math.max(floorY + 1.3, head.y - 0.1)];
+    for (const h of heights) {
+      for (const s of [0, 1, -1]) {
+        _o.set(head.x + _side.x * s, h, head.z + _side.z * s);
+        const hit = castRay(_o, _d, len + CONFIG.bodyRadius);
+        if (hit && (!best || hit.distance < best.distance)) best = hit;
+      }
+    }
+    if (!best) return out;
+    const n = hitNormal(best);
+    if (!n) return out.set(0, 0, 0);
+    n.y = 0;
+    if (n.lengthSq() < 1e-4) return out.set(0, 0, 0);
+    n.normalize();
+    if (n.dot(_d) > 0) n.negate();
+    // an der Wand entlanggleiten
+    out.addScaledVector(n, -out.dot(n));
+    if (iter === 1) {
+      // zweiter Treffer: stehen bleiben
+      return out.set(0, 0, 0);
+    }
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------
+// Spielerzustand
+// ------------------------------------------------------------------
+const state = {
+  level: 0,
+  floorY: 0,
+  ghost: false,
+  recenter: false,
+  lastHead: new THREE.Vector3(),
+  hasLastHead: false,
+  snapReady: true,
+};
+
+function headWorld(target) {
+  camera.updateMatrixWorld(true);
+  return camera.getWorldPosition(target);
+}
+
+function goToLevel(i) {
+  state.level = i;
+  const L = CONFIG.levels[i];
+  const [x, z, yawDeg] = L.spawn;
+  const f = findFloor(x, z, L.y + CONFIG.maxStep + 0.2);
+  state.floorY = f ?? L.y;
+  rig.position.set(x, state.floorY, z);
+  rig.rotation.set(0, THREE.MathUtils.degToRad(yawDeg), 0);
+  if (!renderer.xr.isPresenting) {
+    camera.position.set(0, CONFIG.eyeHeight, 0);
+    camera.rotation.set(0, 0, 0);
+  }
+  state.recenter = renderer.xr.isPresenting;
+  state.hasLastHead = false;
+  closeDoors();
+  flash(L.name);
+}
+
+function toggleGhost() {
+  state.ghost = !state.ghost;
+  flash(state.ghost ? 'Geistmodus AN – durch Wände' : 'Geistmodus AUS');
+}
+
+// ------------------------------------------------------------------
+// VR-Controller
+// ------------------------------------------------------------------
+const controllerModels = new XRControllerModelFactory();
+const hands = { left: null, right: null };
+for (let i = 0; i < 2; i++) {
+  const grip = renderer.xr.getControllerGrip(i);
+  grip.add(controllerModels.createControllerModel(grip));
+  rig.add(grip);
+  const ctrl = renderer.xr.getController(i);
+  rig.add(ctrl);
+  ctrl.addEventListener('connected', (e) => {
+    const hand = e.data.handedness;
+    hands[hand] = { source: e.data, ctrl, grip, prev: [] };
+    if (hand === 'left') grip.add(helpPanel);
+  });
+  ctrl.addEventListener('disconnected', (e) => {
+    const hand = e.data?.handedness;
+    if (hand && hands[hand]?.ctrl === ctrl) hands[hand] = null;
+  });
+}
+
+// Hilfetafel am linken Controller
+const helpCanvas = document.createElement('canvas');
+helpCanvas.width = 512; helpCanvas.height = 300;
+const helpTex = new THREE.CanvasTexture(helpCanvas);
+helpTex.colorSpace = THREE.SRGBColorSpace;
+const helpPanel = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.17, 0.1),
+  new THREE.MeshBasicMaterial({ map: helpTex, transparent: true, toneMapped: false })
+);
+helpPanel.position.set(0, 0.07, -0.06);
+helpPanel.rotation.x = -Math.PI / 3.2;
+let flashText = '', flashUntil = 0;
+function drawHelp() {
+  const g = helpCanvas.getContext('2d');
+  g.clearRect(0, 0, 512, 300);
+  g.fillStyle = 'rgba(15,17,20,0.82)';
+  g.beginPath(); g.roundRect(0, 0, 512, 300, 24); g.fill();
+  g.fillStyle = '#e8c170'; g.font = '600 30px system-ui, sans-serif';
+  g.fillText(CONFIG.levels[state.level].name + (state.ghost ? ' · Geist' : ''), 24, 46);
+  g.fillStyle = '#e6e6e6'; g.font = '24px system-ui, sans-serif';
+  const lines = ['L-Stick: gehen · L-Trigger: schneller', 'R-Stick: drehen', 'A: Standort · B: Geistmodus', 'X: neu starten · Y: Hilfe aus'];
+  lines.forEach((t, i) => g.fillText(t, 24, 100 + i * 44));
+  helpTex.needsUpdate = true;
+}
+function flash(text) {
+  flashText = text; flashUntil = performance.now() + 2000;
+  const m = $('#mode'); m.textContent = text; m.style.display = 'block';
+  clearTimeout(flash._t); flash._t = setTimeout(() => (m.style.display = 'none'), 2000);
+  drawHelp();
+}
+drawHelp();
+
+// VR-Button
+const vrButton = VRButton.createButton(renderer, { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] });
+document.body.appendChild(vrButton);
+renderer.xr.addEventListener('sessionstart', () => {
+  state.recenter = true; state.hasLastHead = false;
+  $('#help').style.display = 'none';
+});
+renderer.xr.addEventListener('sessionend', () => {
+  camera.position.set(0, CONFIG.eyeHeight, 0);
+  camera.rotation.set(0, 0, 0);
+  rig.rotation.set(0, 0, 0);
+  $('#help').style.display = '';
+  state.hasLastHead = false;
+});
+
+function pressed(h, idx) {
+  const b = h.source.gamepad?.buttons[idx];
+  const now = !!b?.pressed;
+  const was = !!h.prev[idx];
+  h.prev[idx] = now;
+  return now && !was;
+}
+
+// ------------------------------------------------------------------
+// Desktop-Steuerung
+// ------------------------------------------------------------------
+const plc = new PointerLockControls(camera, renderer.domElement);
+renderer.domElement.addEventListener('click', () => { if (!renderer.xr.isPresenting && !params.has('top')) plc.lock(); });
+const keys = new Set();
+addEventListener('keydown', (e) => {
+  keys.add(e.code);
+  if (e.code === 'KeyG') toggleGhost();
+  if (e.code === 'KeyR') goToLevel(state.level);
+  if (e.code === 'KeyF') goToLevel((state.level + 1) % CONFIG.levels.length);
+});
+addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ------------------------------------------------------------------
+// Hauptschleife
+// ------------------------------------------------------------------
+const timer = new THREE.Timer();
+const head = new THREE.Vector3();
+const fwd = new THREE.Vector3();
+const right = new THREE.Vector3();
+const move = new THREE.Vector3();
+let topCam = null;
+
+function update(dt) {
+  if (!colliders.length) return;
+  const xr = renderer.xr.isPresenting;
+  headWorld(head);
+
+  // Beim VR-Start / Etagenwechsel: Kopf auf den Startpunkt setzen
+  if (xr && state.recenter) {
+    const [x, z] = CONFIG.levels[state.level].spawn;
+    rig.position.x += x - head.x;
+    rig.position.z += z - head.z;
+    state.recenter = false;
+    headWorld(head);
+    state.hasLastHead = false;
+  }
+
+  // Reales Gehen im Raum: Kopf nicht in Wände lassen
+  if (xr && state.hasLastHead && !state.ghost) {
+    const phys = tmpV.subVectors(head, state.lastHead); phys.y = 0;
+    if (phys.lengthSq() > 1e-8) {
+      const allowed = collide(state.lastHead, state.floorY, phys.clone());
+      rig.position.x += allowed.x - phys.x;
+      rig.position.z += allowed.z - phys.z;
+      headWorld(head);
+    }
+  }
+
+  // Eingaben einsammeln
+  let mx = 0, mz = 0, run = false, turn = 0;
+  if (xr) {
+    const L = hands.left, R = hands.right;
+    if (L?.source.gamepad) {
+      const a = L.source.gamepad.axes;
+      mx = a[2] ?? 0; mz = a[3] ?? 0;
+      run = !!L.source.gamepad.buttons[0]?.pressed;
+      if (pressed(L, 4)) goToLevel(state.level);                                   // X
+      if (pressed(L, 5)) helpPanel.visible = !helpPanel.visible;                   // Y
+    }
+    if (R?.source.gamepad) {
+      const a = R.source.gamepad.axes;
+      turn = a[2] ?? 0;
+      if (pressed(R, 4)) goToLevel((state.level + 1) % CONFIG.levels.length);      // A
+      if (pressed(R, 5)) toggleGhost();                                            // B
+    }
+    if (Math.abs(mx) < 0.15) mx = 0;
+    if (Math.abs(mz) < 0.15) mz = 0;
+  } else {
+    if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
+    if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1;
+    if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
+    run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  }
+
+  // Snap-Turn um den Kopf herum
+  if (Math.abs(turn) > 0.7 && state.snapReady) {
+    const ang = -Math.sign(turn) * THREE.MathUtils.degToRad(CONFIG.snapAngle);
+    rig.position.sub(head).applyAxisAngle(UP, ang).add(head);
+    rig.rotation.y += ang;
+    state.snapReady = false;
+  } else if (Math.abs(turn) < 0.3) {
+    state.snapReady = true;
+  }
+
+  // Bewegung relativ zur Blickrichtung
+  const mag = Math.min(1, Math.hypot(mx, mz));
+  if (mag > 0) {
+    camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+    right.crossVectors(fwd, UP).normalize();
+    move.set(0, 0, 0).addScaledVector(fwd, -mz).addScaledVector(right, mx);
+    if (move.lengthSq() > 1) move.normalize();
+    move.multiplyScalar((run ? CONFIG.runSpeed : CONFIG.walkSpeed) * dt);
+    const allowed = state.ghost ? move : collide(head, state.floorY, move);
+    rig.position.x += allowed.x;
+    rig.position.z += allowed.z;
+    headWorld(head);
+  }
+
+  // Boden folgen (Treppen hoch und runter)
+  const f = findFloorFoot(head.x, head.z, state.floorY + CONFIG.maxStep);
+  if (f !== null) {
+    state.floorY = f;
+  }
+  const k = 1 - Math.exp(-dt * 12);
+  rig.position.y += (state.floorY - rig.position.y) * k;
+
+  updateDoors(dt, head);
+
+  // Vignette
+  if (CONFIG.vignette && xr) {
+    const target = mag > 0 ? 0.55 * mag : 0;
+    const u = vignette.material.uniforms.uOpacity;
+    u.value += (target - u.value) * (1 - Math.exp(-dt * 8));
+    vignette.visible = u.value > 0.01;
+  } else vignette.visible = false;
+
+  headWorld(state.lastHead);
+  state.hasLastHead = true;
+}
+
+renderer.setAnimationLoop((t) => {
+  timer.update(t);
+  const dt = Math.min(timer.getDelta(), 0.1);
+  update(dt);
+  renderer.render(scene, topCam ?? camera);
+});
+
+// ------------------------------------------------------------------
+// Debug: Draufsicht (index.html?top=1.5 schneidet oberhalb 1.5 m ab)
+// ------------------------------------------------------------------
+function setupTopView(cutY) {
+  const s = modelBox.getSize(new THREE.Vector3());
+  const c = modelBox.getCenter(new THREE.Vector3());
+  const h = Math.max(s.x, s.z) / 2 + 0.5;
+  const a = innerWidth / innerHeight;
+  topCam = new THREE.OrthographicCamera(-h * a, h * a, h, -h, 0, 50);
+  topCam.position.set(c.x, cutY, c.z);
+  topCam.up.set(0, 0, -1);
+  topCam.lookAt(c.x, cutY - 1, c.z);
+  $('#help').style.display = 'none';
+  const grid = new THREE.GridHelper(20, 20, 0xff0000, 0xff8888);
+  grid.position.y = cutY - 0.05;
+  if (params.has('grid')) scene.add(grid);
+}
+window.__debug = { update, doors, keys, THREE, scene, rig, camera, state, CONFIG, findFloor, goToLevel, renderer, get box() { return modelBox; }, colliders };
+</script>
 </body>
 </html>
